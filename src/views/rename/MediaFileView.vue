@@ -3,7 +3,7 @@ import { nextTick, onMounted, reactive, ref } from 'vue'
 import { showToast } from 'vant'
 import { useModalStore } from '@/stores/modal'
 import { doAction } from '@/api/request'
-import { nameTest, type NameTestData } from '@/api/system'
+import { nameTest, refreshProcess, type NameTestData, type RefreshProcessResult } from '@/api/system'
 
 interface FileItem {
   path: string
@@ -70,6 +70,53 @@ const transferForm = ref({
   episode_offset: '',
 })
 const transferLoading = ref(false)
+
+const progressVisible = ref(false)
+const progressValue = ref(0)
+const progressText = ref('请稍候...')
+const progressTitle = ref('')
+let progressTimer: ReturnType<typeof setTimeout> | null = null
+
+function startProgressPolling(type: string) {
+  stopProgressPolling()
+  async function poll() {
+    try {
+      const res = await refreshProcess(type)
+      if (res.code === 0 && res.value <= 100) {
+        progressValue.value = res.value
+        progressText.value = res.text
+      }
+    } catch {}
+    progressTimer = setTimeout(poll, 200)
+  }
+  poll()
+}
+
+function stopProgressPolling() {
+  if (progressTimer) {
+    clearTimeout(progressTimer)
+    progressTimer = null
+  }
+}
+
+const showSyncmodPicker = ref(false)
+const SYNC_MODS = [
+  { text: '硬链接', value: 'link' },
+  { text: '软链接', value: 'softlink' },
+  { text: '复制', value: 'copy' },
+  { text: '移动', value: 'move' },
+  { text: 'Rclone复制', value: 'rclonecopy' },
+  { text: 'Rclone移动', value: 'rclone' },
+  { text: 'Minio复制', value: 'miniocopy' },
+  { text: 'Minio移动', value: 'minio' },
+]
+
+function openSyncmodPicker() {
+  showTransfer.value = false
+  nextTick(() => {
+    showSyncmodPicker.value = true
+  })
+}
 
 const showTmdbSearch = ref(false)
 const tmdbSearchKeyword = ref('')
@@ -288,7 +335,12 @@ function openTransferDir() {
 async function submitTransfer() {
   const inpath = isTransferDir.value ? currentDir.value : activeFile.value?.path
   if (!inpath) return
-  transferLoading.value = true
+  showTransfer.value = false
+  progressTitle.value = '手动转移 ' + inpath
+  progressValue.value = 0
+  progressText.value = '请稍候...'
+  progressVisible.value = true
+  startProgressPolling('filetransfer')
   try {
     const params: Record<string, unknown> = {
       inpath,
@@ -303,10 +355,27 @@ async function submitTransfer() {
     if (transferForm.value.episode_details) params.episode_details = transferForm.value.episode_details
     if (transferForm.value.episode_offset) params.episode_offset = transferForm.value.episode_offset
     const res = await doAction<{ retcode: number; retmsg?: string }>('rename_udf', params)
-    if (res.retcode === 0) { showToast('转移成功'); showTransfer.value = false; loadFiles(currentDir.value) }
-    else showToast(res.retmsg || '转移失败')
-  } catch { showToast('转移失败') }
-  finally { transferLoading.value = false }
+    stopProgressPolling()
+    if (res.retcode === 0) {
+      progressValue.value = 100
+      progressText.value = '转移成功！'
+      setTimeout(() => {
+        progressVisible.value = false
+        showToast('转移成功')
+        loadFiles(currentDir.value)
+      }, 1500)
+    } else {
+      progressText.value = res.retmsg || '转移失败'
+      setTimeout(() => {
+        progressVisible.value = false
+        showToast(res.retmsg || '转移失败')
+      }, 1500)
+    }
+  } catch {
+    stopProgressPolling()
+    progressVisible.value = false
+    showToast('转移失败')
+  }
 }
 
 // ---- TMDB Search ----
@@ -440,20 +509,11 @@ function formatSize(s: string): string {
       <van-form @submit="submitTransfer" style="padding:16px">
         <van-cell :title="'输入路径'" :value="isTransferDir ? currentDir : activeFile?.path" title-style="font-size:13px" value-style="font-size:11px;color:#969799;word-break:break-all" />
         <van-field v-model="transferForm.outpath" label="输出路径" placeholder="留空使用默认" />
-        <van-field name="syncmod" label="转移方式">
-          <template #input>
-            <van-radio-group v-model="transferForm.syncmod" direction="horizontal">
-              <van-radio name="link" shape="square">硬链接</van-radio>
-              <van-radio name="softlink" shape="square">软链接</van-radio>
-              <van-radio name="copy" shape="square">复制</van-radio>
-              <van-radio name="move" shape="square">移动</van-radio>
-              <van-radio name="rclonecopy" shape="square">Rclone复制</van-radio>
-              <van-radio name="rclone" shape="square">Rclone移动</van-radio>
-              <van-radio name="miniocopy" shape="square">Minio复制</van-radio>
-              <van-radio name="minio" shape="square">Minio移动</van-radio>
-            </van-radio-group>
-          </template>
-        </van-field>
+        <van-field
+          name="syncmod" label="转移方式" is-link readonly
+          :model-value="SYNC_MODS.find(o => o.value === transferForm.syncmod)?.text || transferForm.syncmod"
+          @click="openSyncmodPicker"
+        />
         <van-field name="type" label="类型">
           <template #input>
             <van-radio-group v-model="transferForm.type" direction="horizontal">
@@ -469,19 +529,37 @@ function formatSize(s: string): string {
             <van-tag v-if="transferForm.tmdb" size="medium" closable @close="transferForm.tmdb = ''" style="margin-right:4px">{{ transferForm.tmdb }}</van-tag>
           </template>
         </van-field>
-        <van-field v-model="transferForm.season" label="季" placeholder="电视剧时填写" type="number" />
+        <van-field v-if="transferForm.type !== 'MOV'" v-model="transferForm.season" label="季" placeholder="电视剧时填写" type="number" />
         <van-field v-model="transferForm.min_filesize" label="最小文件大小(MB)" placeholder="如 200" type="number" />
-        <van-field v-model="transferForm.episode_format" label="集数定位格式" placeholder="如 {ep}" />
-        <van-field v-model="transferForm.episode_details" label="起始集[,终止集]" placeholder="如 1[,12]" />
-        <van-field v-model="transferForm.episode_offset" label="集数偏移" placeholder="如 0" type="number" />
+        <van-field v-if="transferForm.type !== 'MOV'" v-model="transferForm.episode_format" label="集数定位格式" placeholder="如 {ep}" />
+        <van-field v-if="transferForm.type !== 'MOV'" v-model="transferForm.episode_details" label="起始集[,终止集]" placeholder="如 1[,12]" />
+        <van-field v-if="transferForm.type !== 'MOV'" v-model="transferForm.episode_offset" label="集数偏移" placeholder="如 0" type="number" />
         <div style="margin-top:16px">
           <van-button round block type="primary" native-type="submit" :loading="transferLoading">开始转移</van-button>
         </div>
       </van-form>
     </van-popup>
 
+    <!-- 转移进度遮罩 -->
+    <van-overlay :show="progressVisible" :lock-scroll="false" style="display:flex;align-items:center;justify-content:center">
+      <div class="progress-box">
+        <div class="progress-title">{{ progressTitle }}</div>
+        <van-progress :percentage="progressValue" :stroke-width="16" :show-pivot="false" style="margin:16px 0" />
+        <div class="progress-text">{{ progressText }}</div>
+      </div>
+    </van-overlay>
+
+    <van-popup v-model:show="showSyncmodPicker" position="bottom" round teleport="body" @closed="showTransfer = true">
+      <van-picker
+        :columns="SYNC_MODS"
+        :default-index="SYNC_MODS.findIndex(s => s.value === transferForm.syncmod)"
+        @confirm="({ selectedValues, selectedOptions }) => { transferForm.syncmod = selectedOptions[0].value;console.info(transferForm.syncmod); showSyncmodPicker = false }"
+        @cancel="showSyncmodPicker = false"
+      />
+    </van-popup>
+
     <van-popup v-model:show="showTmdbSearch" position="bottom" round :style="{ height: '70%' }" closeable title="查询TMDB ID">
-      <div style="padding:12px">
+      <div style="padding:56px 12px 12px">
         <div style="display:flex;gap:8px;margin-bottom:12px">
           <van-field v-model="tmdbSearchKeyword" placeholder="输入标题" style="flex:1" @keyup.enter="searchTmdb" />
           <van-button size="small" type="primary" @click="searchTmdb">搜索</van-button>
@@ -563,5 +641,17 @@ function formatSize(s: string): string {
 .tmdb-info { flex:1;overflow:hidden; }
 .tmdb-title { font-size:13px;font-weight:600;color:#323233;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .tmdb-year { font-size:11px;color:#969799; }
+.progress-box {
+  width:280px;padding:24px;background:#fff;border-radius:12px;text-align:center;
+}
+.progress-title { font-size:14px;color:#323233;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.progress-text { font-size:13px;color:#969799; }
+.syncmod-option {
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 8px;font-size:15px;color:#323233;border-bottom:1px solid #f5f5f5;
+  cursor:pointer;
+}
+.syncmod-option:active { background:#f5f5f5; }
+.syncmod-option.active { color:#1989fa;font-weight:600; }
 .tmdb-overview { font-size:11px;color:#969799;margin-top:2px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical; }
 </style>

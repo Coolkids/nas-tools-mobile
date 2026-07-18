@@ -7,7 +7,7 @@ const sections = [
   {
     title: '下载管理',
     items: [
-      { name: 'downloading', label: '正在下载', icon: 'downloading', color: '#1989fa' },
+      { name: 'downloading', label: '正在下载', icon: 'down', color: '#1989fa' },
       { name: 'downloader', label: '下载器', icon: 'setting-o', color: '#07c160' },
       { name: 'download_setting', label: '下载设置', icon: 'gem-o', color: '#7232dd' },
       { name: 'torrent_remove', label: '自动删种', icon: 'delete-o', color: '#ee0a24' },
@@ -20,7 +20,7 @@ const sections = [
       { name: 'history', label: '转移历史', icon: 'clock-o', color: '#1989fa' },
       { name: 'unidentification', label: '手动识别', icon: 'search', color: '#07c160' },
       { name: 'tmdbcache', label: 'TMDB缓存', icon: 'fire-o', color: '#7232dd' },
-      { name: 'mediafile', label: '文件管理', icon: 'folder-o', color: '#ee0a24' },
+      { name: 'mediafile', label: '文件管理', icon: 'description-o', color: '#ee0a24' },
       { name: 'directorysync', label: '目录同步', icon: 'exchange', color: '#ff976a' },
     ]
   },
@@ -38,7 +38,7 @@ const sections = [
     title: '系统设置',
     items: [
       { name: 'basic', label: '基础设置', icon: 'setting-o', color: '#1989fa' },
-      { name: 'notification', label: '消息通知', icon: 'bell-o', color: '#07c160' },
+      { name: 'notification', label: '消息通知', icon: 'bell', color: '#07c160' },
       { name: 'library', label: '媒体库', icon: 'tv-o', color: '#7232dd' },
       { name: 'mediaserver', label: '媒体服务器', icon: 'video-o', color: '#ee0a24' },
       { name: 'indexer', label: '索引器', icon: 'search', color: '#ff976a' },
