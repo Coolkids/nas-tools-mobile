@@ -1,0 +1,46 @@
+import { fileURLToPath, URL } from 'node:url'
+import { defineConfig } from 'vite'
+import vue from '@vitejs/plugin-vue'
+
+const FLASK_TARGET = process.env.FLASK_TARGET || 'http://localhost:3000'
+
+export default defineConfig({
+  plugins: [vue()],
+  base: '/',
+  css: {
+    preprocessorOptions: {
+      scss: { api: 'modern-compiler' }
+    }
+  },
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url))
+    }
+  },
+  server: {
+    host: '0.0.0.0',
+    port: 5173,
+    proxy: {
+      '/do': { target: FLASK_TARGET, changeOrigin: true },
+      '/login_json': { target: FLASK_TARGET, changeOrigin: true },
+      '/logout_json': { target: FLASK_TARGET, changeOrigin: true },
+      '/dirlist': { target: FLASK_TARGET, changeOrigin: true },
+      '/api/v1': { target: FLASK_TARGET, changeOrigin: true },
+      '/img': { target: FLASK_TARGET, changeOrigin: true },
+      '/backup': { target: FLASK_TARGET, changeOrigin: true },
+      '/upload': { target: FLASK_TARGET, changeOrigin: true },
+      '/wechat': { target: FLASK_TARGET, changeOrigin: true },
+      '/plex': { target: FLASK_TARGET, changeOrigin: true },
+      '/jellyfin': { target: FLASK_TARGET, changeOrigin: true },
+      '/emby': { target: FLASK_TARGET, changeOrigin: true },
+      '/telegram': { target: FLASK_TARGET, changeOrigin: true },
+      '/subscribe': { target: FLASK_TARGET, changeOrigin: true },
+      '/wallpaper': { target: FLASK_TARGET, changeOrigin: true }
+    }
+  },
+  build: {
+    outDir: 'dist',
+    sourcemap: false,
+    chunkSizeWarningLimit: 1500
+  }
+})
