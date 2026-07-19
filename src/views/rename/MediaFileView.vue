@@ -62,7 +62,7 @@ const showTransfer = ref(false)
 const isTransferDir = ref(false)
 const transferForm = ref({
   outpath: '',
-  syncmod: 'link',
+  syncmod: 'copy',
   type: 'MOV',
   tmdb: '',
   season: '',
@@ -101,6 +101,7 @@ function stopProgressPolling() {
   }
 }
 
+const defaultSyncmod = ref('copy')
 const showSyncmodPicker = ref(false)
 const SYNC_MODS = [
   { text: '硬链接', value: 'link' },
@@ -149,7 +150,10 @@ onMounted(async () => {
   try {
     const res = await doAction<{ code: number; config?: Record<string, unknown> }>('get_config', {})
     if (res.code === 0) {
-      const dirs = res.config?.downloaddir as Array<{ save_path?: string }> | undefined
+      const cfg = res.config
+      const mode = (cfg?.pt as Record<string, unknown>)?.['rmt_mode'] as string | undefined
+      if (mode) { defaultSyncmod.value = mode; transferForm.value.syncmod = mode }
+      const dirs = cfg?.downloaddir as Array<{ save_path?: string }> | undefined
       if (dirs && dirs.length > 0 && dirs[0].save_path) {
         const p = getParentDir(dirs[0].save_path)
         currentDir.value = p
@@ -339,7 +343,7 @@ async function submitRename() {
 // ---- Transfer ----
 function resetTransferForm() {
   transferForm.value = {
-    outpath: '', syncmod: 'link', type: 'MOV', tmdb: '', season: '',
+    outpath: '', syncmod: defaultSyncmod.value, type: 'MOV', tmdb: '', season: '',
     min_filesize: '', episode_format: '', episode_details: '', episode_offset: ''
   }
 }

@@ -257,12 +257,16 @@ onMounted(load)
     <van-popup v-model:show="netTestVisible" position="center" :style="{ width: '90%', borderRadius: '8px' }">
       <div style="padding: 16px">
         <div style="font-size:16px;font-weight:600;margin-bottom:12px;text-align:center">网络连通性测试</div>
-        <van-cell v-for="r in netTestResults" :key="r.target" :title="r.target">
-          <template #value>
-            <van-loading v-if="r.testing" size="16" />
-            <van-tag v-else :type="r.res ? 'success' : 'danger'" size="small">{{ r.res ? '连通' : '断开' }}</van-tag>
-          </template>
-        </van-cell>
+        <div v-for="r in netTestResults" :key="r.target" class="net-row">
+          <span class="net-target">{{ r.target }}</span>
+          <span class="net-value">
+            <van-loading v-if="r.testing" size="14" />
+            <template v-else>
+              <van-tag :type="r.res ? 'success' : 'danger'" size="small">{{ r.res ? '连通' : '断开' }}</van-tag>
+              <span v-if="r.time" :style="{ color: r.res ? 'var(--van-success-color)' : 'var(--van-danger-color)', marginLeft: '6px', fontSize: '12px' }">{{ r.time }}</span>
+            </template>
+          </span>
+        </div>
       </div>
     </van-popup>
 
@@ -324,5 +328,29 @@ onMounted(load)
   line-height: 1.4;
   height: auto;
   min-height: 24px;
+}
+.net-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  font-size: 14px;
+  border-bottom: 1px solid #f5f5f5;
+}
+.net-row:last-child {
+  border-bottom: none;
+}
+.net-target {
+  color: #323233;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.net-value {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 </style>
