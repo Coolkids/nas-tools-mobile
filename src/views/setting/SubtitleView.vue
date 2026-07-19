@@ -1,78 +1,175 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
-import { showToast } from 'vant'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useConfigForm } from '@/composables/useConfigForm'
 
-const { config, loading: cfgLoading, saving, load: loadCfg, save } = useConfigForm()
-const loading = ref(true)
+type SubType = 'opensubtitles' | 'chinesesubfinder'
 
-const serverType = ref('opensubtitles')
-const form = reactive({
-  opensubtitles_enable: false,
-  chinesesubfinder_host: '',
-  chinesesubfinder_api_key: '',
-  chinesesubfinder_local_path: '',
-  chinesesubfinder_remote_path: '',
-})
-
-onMounted(async () => {
-  await loadCfg()
-  if (config.value) {
-    const c = config.value
-    serverType.value = String(c.subtitle?.server || 'opensubtitles')
-    const os = c.subtitle?.opensubtitles || {}
-    form.opensubtitles_enable = !!(os as Record<string, unknown>).enable
-    const cs = c.subtitle?.chinesesubfinder || {}
-    form.chinesesubfinder_host = String((cs as Record<string, unknown>).host || '')
-    form.chinesesubfinder_api_key = String((cs as Record<string, unknown>).api_key || '')
-    form.chinesesubfinder_local_path = String((cs as Record<string, unknown>).local_path || '')
-    form.chinesesubfinder_remote_path = String((cs as Record<string, unknown>).remote_path || '')
-  }
-  loading.value = false
-})
-
-async function onSave() {
-  await save({
-    'subtitle.server': serverType.value,
-    'subtitle.opensubtitles.enable': form.opensubtitles_enable,
-    'subtitle.chinesesubfinder.host': form.chinesesubfinder_host,
-    'subtitle.chinesesubfinder.api_key': form.chinesesubfinder_api_key,
-    'subtitle.chinesesubfinder.local_path': form.chinesesubfinder_local_path,
-    'subtitle.chinesesubfinder.remote_path': form.chinesesubfinder_remote_path,
-  })
+interface ServerType {
+  type: SubType
+  name: string
+  img: string
 }
+
+const SERVERS: ServerType[] = [
+  { type: 'opensubtitles', name: 'OpenSubtitles', img: 'opensubtitles.png' },
+  { type: 'chinesesubfinder', name: 'ChineseSubFinder', img: 'chinesesubfinder.png' }
+]
+
+const { config, loading, load, save } = useConfigForm()
+
+const dialogVisible = ref(false)
+const currentType = ref<SubType | null>(null)
+const form = reactive({
+  enable: false,
+  host: '',
+  api_key: '',
+  local_path: '',
+  remote_path: ''
+})
+
+const saving = ref(false)
+
+const activeServer = computed(() => {
+  const sub = config.value.subtitle as Record<string, unknown> | undefined
+  return sub?.server as string | undefined
+})
+
+function openDialog(type: SubType) {
+  currentType.value = type
+  const sub = config.value.subtitle as Record<string, Record<string, unknown>> | undefined
+  if (type === 'opensubtitles') {
+    form.enable = Boolean(sub?.opensubtitles?.enable)
+  } else {
+    const csf = sub?.chinesesubfinder || {}
+    form.host = (csf.host as string) || ''
+    form.api_key = (csf.api_key as string) || ''
+    form.local_path = (csf.local_path as string) || ''
+    form.remote_path = (csf.remote_path as string) || ''
+  }
+  dialogVisible.value = true
+}
+
+function buildItems(): Record<string, unknown> {
+  const items: Record<string, unknown> = { 'subtitle.server': currentType.value }
+  if (currentType.value === 'opensubtitles') {
+    items['subtitle.opensubtitles.enable'] = form.enable
+  } else {
+    items['subtitle.chinesesubfinder.host'] = form.host
+    items['subtitle.chinesesubfinder.api_key'] = form.api_key
+    items['subtitle.chinesesubfinder.local_path'] = form.local_path
+    items['subtitle.chinesesubfinder.remote_path'] = form.remote_path
+  }
+  return items
+}
+
+async function handleSave() {
+  saving.value = true
+  try {
+    const ok = await save(buildItems())
+    if (ok) dialogVisible.value = false
+  } finally { saving.value = false }
+}
+
+onMounted(load)
 </script>
 
 <template>
   <div class="subtitle page">
     <van-loading v-if="loading" size="20" style="padding:40px;text-align:center" />
-    <van-form v-else @submit="onSave" style="padding:12px">
-      <van-cell-group inset>
-        <van-cell title="字幕服务" />
-        <van-radio-group v-model="serverType" direction="horizontal">
-          <van-radio name="opensubtitles" shape="square">OpenSubtitles</van-radio>
-          <van-radio name="chinesesubfinder" shape="square">ChineseSubFinder</van-radio>
-        </van-radio-group>
-      </van-cell-group>
 
-      <van-cell-group inset style="margin-top:12px">
-        <van-cell title="OpenSubtitles" />
-        <van-field name="opensubtitles_enable" label="启用">
-          <template #input><van-switch v-model="form.opensubtitles_enable" /></template>
-        </van-field>
-      </van-cell-group>
-
-      <van-cell-group inset style="margin-top:12px">
-        <van-cell title="ChineseSubFinder" />
-        <van-field v-model="form.chinesesubfinder_host" label="地址" placeholder="http://127.0.0.1:19035" />
-        <van-field v-model="form.chinesesubfinder_api_key" label="API Key" />
-        <van-field v-model="form.chinesesubfinder_local_path" label="本地路径" placeholder="可选" />
-        <van-field v-model="form.chinesesubfinder_remote_path" label="远程路径" placeholder="可选" />
-      </van-cell-group>
-
-      <div style="margin-top:16px">
-        <van-button block type="primary" native-type="submit" :loading="saving">保存设置</van-button>
+    <template v-else>
+      <div class="section-title">选择字幕服务</div>
+      <div class="server-grid">
+        <div
+          v-for="s in SERVERS"
+          :key="s.type"
+          class="server-card"
+          @click="openDialog(s.type)"
+        >
+          <div class="server-icon">
+            <img :src="`/static/img/${s.img}`" :alt="s.name" />
+          </div>
+          <div class="server-name">{{ s.name }}</div>
+          <van-tag v-if="activeServer === s.type" type="success" size="small">使用中</van-tag>
+          <span v-else class="server-hint">点击配置</span>
+        </div>
       </div>
-    </van-form>
+
+      <van-popup v-model:show="dialogVisible" position="bottom" :style="{ height: '65%' }" closeable :title="currentType === 'opensubtitles' ? 'OpenSubtitles' : 'ChineseSubFinder'">
+        <van-form @submit="handleSave" style="padding:12px 16px 24px">
+          <template v-if="currentType === 'opensubtitles'">
+            <van-field name="enable" label="开启字幕下载">
+              <template #input>
+                <van-switch v-model="form.enable" />
+              </template>
+            </van-field>
+          </template>
+          <template v-else>
+            <van-field v-model="form.host" label="服务器地址" placeholder="http://127.0.0.1:19035" />
+            <van-field v-model="form.api_key" label="Api Key" placeholder="在ChineseSubFinder中生成" />
+            <van-field v-model="form.local_path" label="本地路径" placeholder="可选" />
+            <van-field v-model="form.remote_path" label="远程路径" placeholder="可选" />
+          </template>
+          <div style="margin-top:16px">
+            <van-button block type="primary" native-type="submit" :loading="saving">保存</van-button>
+          </div>
+        </van-form>
+      </van-popup>
+    </template>
   </div>
 </template>
+
+<style scoped>
+.section-title {
+  font-size: 15px;
+  font-weight: 600;
+  padding: 12px 12px 8px;
+}
+
+.server-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding: 0 12px 12px;
+}
+
+.server-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 8px 10px;
+  background: #fff;
+  border-radius: 10px;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.server-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--van-background-2, #f7f8fa);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.server-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.server-name {
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.server-hint {
+  font-size: 11px;
+  color: var(--van-text-color-3, #999);
+}
+</style>
