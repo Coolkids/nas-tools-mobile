@@ -3,202 +3,393 @@ import { onMounted, reactive, ref } from 'vue'
 import { showToast } from 'vant'
 import { useConfigForm } from '@/composables/useConfigForm'
 import { useModalStore } from '@/stores/modal'
-import { testConnection } from '@/api/config'
-import { getSystemConfig, setSystemConfig } from '@/api/config'
+import { testConnection, getSystemConfig, setSystemConfig } from '@/api/config'
 
-const { config, loading: cfgLoading, saving, load: loadCfg, save } = useConfigForm()
-const modal = useModalStore()
-const loading = ref(true)
+interface FieldDef {
+  id: string
+  required?: boolean
+  title: string
+  type: 'text' | 'password' | 'switch'
+  placeholder?: string
+}
+interface DownloaderDef {
+  type: string
+  name: string
+  img: string
+  testCommand: string
+  config: Record<string, FieldDef>
+}
 
-const ptClient = ref('qbittorrent')
-const activeTab = ref('qbittorrent')
-
-const qbForm = reactive({ host: '', port: '8080', username: '', password: '', force_upload: false, auto_management: false })
-const trForm = reactive({ host: '', port: '9091', username: '', password: '' })
-const a115Form = reactive({ cookie: '' })
-const aria2Form = reactive({ host: '', port: '6800', secret: '' })
-const pikForm = reactive({ username: '', password: '', proxy: '' })
-
-const speedForm = reactive({
-  qb_upload: '', qb_download: '',
-  tr_upload: '', tr_download: ''
-})
-
-onMounted(async () => {
-  await loadCfg()
-  if (config.value) {
-    const c = config.value
-    ptClient.value = String(c.pt?.pt_client || 'qbittorrent')
-    activeTab.value = ptClient.value
-
-    const qb = c.qbittorrent || {}
-    qbForm.host = String(qb.qbhost || ''); qbForm.port = String(qb.qbport || '8080')
-    qbForm.username = String(qb.qbusername || ''); qbForm.password = String(qb.qbpassword || '')
-    qbForm.force_upload = !!qb.force_upload; qbForm.auto_management = !!qb.auto_management
-
-    const tr = c.transmission || {}
-    trForm.host = String(tr.trhost || ''); trForm.port = String(tr.trport || '9091')
-    trForm.username = String(tr.trusername || ''); trForm.password = String(tr.trpassword || '')
-
-    const a115 = c['client115'] || {}
-    a115Form.cookie = String(a115.cookie || '')
-
-    const aria2 = c.aria2 || {}
-    aria2Form.host = String(aria2.host || ''); aria2Form.port = String(aria2.port || '6800')
-    aria2Form.secret = String(aria2.secret || '')
-
-    const pik = c.pikpak || {}
-    pikForm.username = String(pik.username || ''); pikForm.password = String(pik.password || '')
-    pikForm.proxy = String(pik.proxy || '')
+const DOWNLOADERS: DownloaderDef[] = [
+  {
+    type: 'qbittorrent', name: 'Qbittorrent', img: 'qbittorrent.png', testCommand: 'app.downloader.client.qbittorrent|Qbittorrent',
+    config: {
+      qbhost: { id: 'qbittorrent.qbhost', required: true, title: 'IP地址', type: 'text', placeholder: '127.0.0.1' },
+      qbport: { id: 'qbittorrent.qbport', required: true, title: '端口', type: 'text', placeholder: '8080' },
+      qbusername: { id: 'qbittorrent.qbusername', required: true, title: '用户名', type: 'text', placeholder: 'admin' },
+      qbpassword: { id: 'qbittorrent.qbpassword', required: false, title: '密码', type: 'password', placeholder: 'adminadmin' },
+      force_upload: { id: 'qbittorrent.force_upload', required: false, title: '自动强制作种', type: 'switch' },
+      auto_management: { id: 'qbittorrent.auto_management', required: false, title: '自动管理模式', type: 'switch' }
+    }
+  },
+  {
+    type: 'transmission', name: 'Transmission', img: 'transmission.png', testCommand: 'app.downloader.client.transmission|Transmission',
+    config: {
+      trhost: { id: 'transmission.trhost', required: true, title: 'IP地址', type: 'text', placeholder: '127.0.0.1' },
+      trport: { id: 'transmission.trport', required: true, title: '端口', type: 'text', placeholder: '9091' },
+      trusername: { id: 'transmission.trusername', required: true, title: '用户名', type: 'text', placeholder: 'admin' },
+      trpassword: { id: 'transmission.trpassword', required: false, title: '密码', type: 'password' }
+    }
+  },
+  {
+    type: 'client115', name: '115网盘', img: '115.jpg', testCommand: 'app.downloader.client.client115|Client115',
+    config: {
+      cookie: { id: 'client115.cookie', required: true, title: 'Cookie', type: 'text', placeholder: 'USERSESSIONID=xxx;...' }
+    }
+  },
+  {
+    type: 'aria2', name: 'Aria2', img: 'aria2.png', testCommand: 'app.downloader.client.aria2|Aria2',
+    config: {
+      host: { id: 'aria2.host', required: true, title: 'IP地址', type: 'text', placeholder: '127.0.0.1' },
+      port: { id: 'aria2.port', required: true, title: '端口', type: 'text', placeholder: '6800' },
+      secret: { id: 'aria2.secret', required: true, title: '令牌', type: 'text' }
+    }
+  },
+  {
+    type: 'pikpak', name: 'PikPak', img: 'pikpak.png', testCommand: 'app.downloader.client.pikpak|PikPak',
+    config: {
+      username: { id: 'pikpak.username', required: true, title: '用户名', type: 'text' },
+      password: { id: 'pikpak.password', required: true, title: '密码', type: 'password' },
+      proxy: { id: 'pikpak.proxy', required: false, title: '代理', type: 'text', placeholder: '127.0.0.1:7890' }
+    }
   }
-  await loadSpeedLimit()
-  loading.value = false
+]
+
+const { config, loading, load, save } = useConfigForm()
+const modal = useModalStore()
+
+const dialogVisible = ref(false)
+const current = ref<DownloaderDef | null>(null)
+const formValues = reactive<Record<string, unknown>>({})
+const saving = ref(false)
+const testing = ref(false)
+
+const dirVisible = ref(false)
+const dirList = ref<Array<{ type: string; category: string; save_path: string; container_path: string; label: string }>>([])
+
+const speedVisible = ref(false)
+const speedLoading = ref(false)
+const speedSaving = ref(false)
+const speedForm = reactive({
+  qb_upload: '', qb_download: '', tr_upload: '', tr_download: '',
+  ipv4: '', ipv6: '', bandwidth: '', residual_ratio: '', allocation: ''
 })
 
-async function loadSpeedLimit() {
+onMounted(loadData)
+
+async function loadData() {
+  await load()
+  syncConfig()
+}
+
+function getCfg(path: string): unknown {
+  const parts = path.split('.')
+  let cur: unknown = config.value
+  for (const p of parts) {
+    if (cur == null || typeof cur !== 'object') return undefined
+    cur = (cur as Record<string, unknown>)[p]
+  }
+  return cur
+}
+
+function activeType(): string {
+  const pt = config.value.pt as Record<string, unknown> | undefined
+  return (pt?.pt_client as string) || ''
+}
+
+function syncConfig() {
+  dirList.value = (getCfg('downloaddir') as typeof dirList.value) || []
+}
+
+function openDownloader(d: DownloaderDef) {
+  current.value = d
+  for (const [key, f] of Object.entries(d.config)) {
+    const v = getCfg(f.id)
+    if (f.type === 'switch') formValues[key] = !!v
+    else formValues[key] = v ?? ''
+  }
+  dialogVisible.value = true
+}
+
+function buildItems(): Record<string, unknown> {
+  if (!current.value) return {}
+  const items: Record<string, unknown> = { 'pt.pt_client': current.value.type }
+  for (const [key, f] of Object.entries(current.value.config)) {
+    items[f.id] = formValues[key]
+  }
+  return items
+}
+
+async function handleSave() {
+  saving.value = true
+  try {
+    const ok = await save(buildItems())
+    if (ok) dialogVisible.value = false
+  } finally {
+    saving.value = false
+  }
+}
+
+async function handleTest() {
+  testing.value = true
+  try {
+    const applied = await save(buildItems(), true)
+    if (!applied) return
+    const res = await testConnection(current.value!.testCommand)
+    if (res.code === 0) modal.success('测试成功')
+    else modal.error(res.msg || '测试失败')
+  } finally {
+    testing.value = false
+  }
+}
+
+function openDir() {
+  syncConfig()
+  dirVisible.value = true
+}
+
+function addDir() {
+  dirList.value.push({ type: '', category: '', save_path: '', container_path: '', label: '' })
+}
+
+function removeDir(idx: number) {
+  dirList.value.splice(idx, 1)
+}
+
+async function saveDir() {
+  const ok = await save({ downloaddir: dirList.value })
+  if (ok) dirVisible.value = false
+}
+
+async function openSpeed() {
+  speedVisible.value = true
+  speedLoading.value = true
   try {
     const res = await getSystemConfig('SpeedLimit')
     if (res.code === 0 && res.value) {
       const v = res.value as Record<string, string>
-      speedForm.qb_upload = v.qb_upload ?? ''
-      speedForm.qb_download = v.qb_download ?? ''
-      speedForm.tr_upload = v.tr_upload ?? ''
-      speedForm.tr_download = v.tr_download ?? ''
+      Object.keys(speedForm).forEach((k) => {
+        speedForm[k as keyof typeof speedForm] = v[k] || ''
+      })
     }
-  } catch { /* ignore */ }
+  } finally {
+    speedLoading.value = false
+  }
 }
 
-async function onSelectClient(client: string) {
-  ptClient.value = client
-  activeTab.value = client
-  await save({ 'pt.pt_client': client })
-}
-
-async function testClient(command: string) {
-  modal.loading('测试中...')
+async function saveSpeed() {
+  speedSaving.value = true
   try {
-    const res = await testConnection(command)
-    if (res.code === 0) showToast('连接成功')
-    else showToast(res.msg || '连接失败')
-  } catch { showToast('连接失败') }
-  finally { modal.close() }
-}
-
-async function onSaveQb() {
-  await save({
-    'pt.pt_client': 'qbittorrent',
-    'qbittorrent.qbhost': qbForm.host, 'qbittorrent.qbport': qbForm.port,
-    'qbittorrent.qbusername': qbForm.username, 'qbittorrent.qbpassword': qbForm.password,
-    'qbittorrent.force_upload': qbForm.force_upload, 'qbittorrent.auto_management': qbForm.auto_management,
-  })
-}
-
-async function onSaveTr() {
-  await save({
-    'pt.pt_client': 'transmission',
-    'transmission.trhost': trForm.host, 'transmission.trport': trForm.port,
-    'transmission.trusername': trForm.username, 'transmission.trpassword': trForm.password,
-  })
-}
-
-async function onSave115() {
-  await save({ 'pt.pt_client': '115', 'client115.cookie': a115Form.cookie })
-}
-
-async function onSaveAria2() {
-  await save({
-    'pt.pt_client': 'aria2',
-    'aria2.host': aria2Form.host, 'aria2.port': aria2Form.port, 'aria2.secret': aria2Form.secret,
-  })
-}
-
-async function onSavePik() {
-  await save({
-    'pt.pt_client': 'pikpak',
-    'pikpak.username': pikForm.username, 'pikpak.password': pikForm.password, 'pikpak.proxy': pikForm.proxy,
-  })
-}
-
-async function onSaveSpeed() {
-  try {
-    const res = await setSystemConfig('SpeedLimit', speedForm)
-    if (res.code === 0) showToast('保存成功')
-    else showToast(res.msg || '保存失败')
-  } catch { showToast('保存失败') }
+    const res = await setSystemConfig('SpeedLimit', { ...speedForm })
+    if (res.code === 0) {
+      modal.success('保存成功')
+      speedVisible.value = false
+    } else {
+      modal.error(res.msg || '保存失败')
+    }
+  } finally {
+    speedSaving.value = false
+  }
 }
 </script>
 
 <template>
   <div class="downloader page">
     <van-loading v-if="loading" size="20" style="padding:40px;text-align:center" />
-    <van-form v-else style="padding:12px">
-      <van-cell-group inset>
-        <van-cell title="下载器" />
-        <van-radio-group v-model="ptClient" direction="horizontal" @change="onSelectClient">
-          <van-radio name="qbittorrent" shape="square">Qb</van-radio>
-          <van-radio name="transmission" shape="square">Tr</van-radio>
-          <van-radio name="115" shape="square">115</van-radio>
-          <van-radio name="aria2" shape="square">Aria2</van-radio>
-          <van-radio name="pikpak" shape="square">PikPak</van-radio>
-        </van-radio-group>
-      </van-cell-group>
 
-      <van-cell-group inset style="margin-top:12px">
-        <van-cell title="Qbittorrent 设置" />
-        <van-field v-model="qbForm.host" label="地址" placeholder="http://192.168.1.x" />
-        <van-field v-model="qbForm.port" label="端口" placeholder="8080" />
-        <van-field v-model="qbForm.username" label="用户名" />
-        <van-field v-model="qbForm.password" label="密码" type="password" />
-        <van-field name="force_upload" label="强制做种">
-          <template #input><van-switch v-model="qbForm.force_upload" /></template>
-        </van-field>
-        <van-field name="auto_management" label="自动管理">
-          <template #input><van-switch v-model="qbForm.auto_management" /></template>
-        </van-field>
-        <van-button size="small" plain @click="testClient('qbittorrent')">测试连接</van-button>
-        <van-button size="small" type="primary" style="margin-left:8px" @click="onSaveQb" :loading="saving">保存</van-button>
-      </van-cell-group>
+    <template v-else>
+      <div class="section-title">选择下载器</div>
+      <div class="dl-grid">
+        <div
+          v-for="d in DOWNLOADERS"
+          :key="d.type"
+          class="dl-card"
+          :class="{ active: activeType() === d.type }"
+          @click="openDownloader(d)"
+        >
+          <div class="dl-icon">
+            <img :src="`/static/img/${d.img}`" :alt="d.name" />
+          </div>
+          <div class="dl-name">{{ d.name }}</div>
+          <van-tag v-if="activeType() === d.type" type="success" size="small">默认</van-tag>
+          <span v-else class="dl-hint">配置</span>
+        </div>
+      </div>
 
-      <van-cell-group inset style="margin-top:12px">
-        <van-cell title="Transmission 设置" />
-        <van-field v-model="trForm.host" label="地址" placeholder="http://192.168.1.x" />
-        <van-field v-model="trForm.port" label="端口" placeholder="9091" />
-        <van-field v-model="trForm.username" label="用户名" />
-        <van-field v-model="trForm.password" label="密码" type="password" />
-        <van-button size="small" plain @click="testClient('transmission')">测试连接</van-button>
-        <van-button size="small" type="primary" style="margin-left:8px" @click="onSaveTr" :loading="saving">保存</van-button>
-      </van-cell-group>
+      <div class="action-bar">
+        <van-button size="small" icon="folder-o" @click="openDir">下载目录</van-button>
+        <van-button size="small" icon="clock-o" @click="openSpeed">播放限速</van-button>
+      </div>
+    </template>
 
-      <van-cell-group inset style="margin-top:12px">
-        <van-cell title="115 设置" />
-        <van-field v-model="a115Form.cookie" label="Cookie" type="textarea" :rows="2" placeholder="115登录Cookie" />
-        <van-button size="small" type="primary" @click="onSave115" :loading="saving">保存</van-button>
-      </van-cell-group>
+    <van-popup v-model:show="dialogVisible" position="bottom" :style="{ height: '80%' }" closeable :title="current?.name || '下载器配置'">
+      <van-form @submit="handleSave" style="padding:12px 16px 24px">
+        <template v-for="[key, f] in Object.entries(current?.config || {})" :key="f.id">
+          <van-field v-if="f.type !== 'switch'" v-model="formValues[key]" :label="f.title" :type="f.type === 'password' ? 'password' : 'text'" :placeholder="f.placeholder" :rules="f.required ? [{ required: true, message: `请填写${f.title}` }] : []" />
+          <van-field v-else :name="key" :label="f.title">
+            <template #input><van-switch v-model="formValues[key]" /></template>
+          </van-field>
+        </template>
+        <div style="margin-top:16px;display:flex;gap:8px">
+          <van-button plain type="default" style="flex:1" :loading="testing" @click="handleTest">测试</van-button>
+          <van-button type="primary" style="flex:2" native-type="submit" :loading="saving">保存</van-button>
+        </div>
+      </van-form>
+    </van-popup>
 
-      <van-cell-group inset style="margin-top:12px">
-        <van-cell title="Aria2 设置" />
-        <van-field v-model="aria2Form.host" label="地址" placeholder="http://192.168.1.x" />
-        <van-field v-model="aria2Form.port" label="端口" placeholder="6800" />
-        <van-field v-model="aria2Form.secret" label="密钥" type="password" />
-        <van-button size="small" type="primary" @click="onSaveAria2" :loading="saving">保存</van-button>
-      </van-cell-group>
+    <van-popup v-model:show="dirVisible" position="bottom" :style="{ height: '80%' }" closeable title="下载目录配置">
+      <div style="padding:12px 16px 24px;overflow-y:auto;max-height:calc(100% - 50px)">
+        <div class="dir-help">根据类型及二级分类自动选择下载目录；二级分类来自基础设置中的二级分类策略</div>
+        <div v-for="(d, idx) in dirList" :key="idx" class="dir-row">
+          <div class="dir-fields">
+            <van-field v-model="d.type" label="类型" placeholder="电影/电视剧/动漫" clearable />
+            <van-field v-model="d.category" label="二级分类" placeholder="可选" clearable />
+            <van-field v-model="d.save_path" label="下载保存目录" placeholder="/downloads" clearable />
+            <van-field v-model="d.container_path" label="访问目录" placeholder="可选" clearable />
+            <van-field v-model="d.label" label="分类标签" placeholder="可选" clearable />
+          </div>
+          <van-icon name="delete" class="dir-remove" @click="removeDir(idx)" />
+        </div>
+        <van-button size="small" icon="plus" @click="addDir" style="margin-top:8px">增加目录</van-button>
+        <van-button block type="primary" style="margin-top:12px" @click="saveDir">保存目录配置</van-button>
+      </div>
+    </van-popup>
 
-      <van-cell-group inset style="margin-top:12px">
-        <van-cell title="PikPak 设置" />
-        <van-field v-model="pikForm.username" label="用户名" />
-        <van-field v-model="pikForm.password" label="密码" type="password" />
-        <van-field v-model="pikForm.proxy" label="代理" placeholder="可选" />
-        <van-button size="small" type="primary" @click="onSavePik" :loading="saving">保存</van-button>
-      </van-cell-group>
+    <van-popup v-model:show="speedVisible" position="bottom" :style="{ height: '80%' }" closeable title="播放限速设置">
+      <van-loading v-if="speedLoading" size="20" style="padding:40px;text-align:center" />
+      <van-form v-else @submit="saveSpeed" style="padding:12px 16px 24px;overflow-y:auto;max-height:calc(100% - 50px)">
+        <div class="speed-section-label">Qbittorrent / Transmission</div>
+        <van-field v-model="speedForm.qb_upload" label="Qb上传限速" placeholder="KB/s, 0或留空不启用" />
+        <van-field v-model="speedForm.qb_download" label="Qb下载限速" placeholder="KB/s, 0或留空不启用" />
+        <van-field v-model="speedForm.tr_upload" label="Tr上传限速" placeholder="KB/s, 0或留空不启用" />
+        <van-field v-model="speedForm.tr_download" label="Tr下载限速" placeholder="KB/s, 0或留空不启用" />
 
-      <van-cell-group inset style="margin-top:12px">
-        <van-cell title="限速设置" />
-        <van-field v-model="speedForm.qb_upload" label="Qb 上传限速(KB/s)" type="number" />
-        <van-field v-model="speedForm.qb_download" label="Qb 下载限速(KB/s)" type="number" />
-        <van-field v-model="speedForm.tr_upload" label="Tr 上传限速(KB/s)" type="number" />
-        <van-field v-model="speedForm.tr_download" label="Tr 下载限速(KB/s)" type="number" />
-        <van-button size="small" type="primary" @click="onSaveSpeed">保存限速</van-button>
-      </van-cell-group>
-    </van-form>
+        <div class="speed-section-label">不限速源地址</div>
+        <van-field v-model="speedForm.ipv4" label="IPv4" placeholder="0.0.0.0/0" />
+        <van-field v-model="speedForm.ipv6" label="IPv6" placeholder="::/0" />
+
+        <div class="speed-section-label">自动限速设置</div>
+        <van-field v-model="speedForm.bandwidth" label="上行带宽" placeholder="Mbps" />
+        <van-field v-model="speedForm.residual_ratio" label="剩余比例" placeholder="0.5" />
+        <van-field v-model="speedForm.allocation" label="分配比例" placeholder="1:1" />
+
+        <van-button block type="primary" style="margin-top:16px" native-type="submit" :loading="speedSaving">保存限速设置</van-button>
+      </van-form>
+    </van-popup>
   </div>
 </template>
+
+<style scoped>
+.section-title {
+  font-size: 15px;
+  font-weight: 600;
+  padding: 12px 12px 8px;
+}
+
+.dl-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding: 0 12px 12px;
+}
+
+.dl-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 8px 10px;
+  background: #fff;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.dl-card.active {
+  border-color: var(--van-primary-color, #1989fa);
+}
+
+.dl-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--van-background-2, #f7f8fa);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dl-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.dl-name {
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.dl-hint {
+  font-size: 11px;
+  color: var(--van-text-color-3, #999);
+}
+
+.action-bar {
+  display: flex;
+  gap: 8px;
+  padding: 0 12px 12px;
+}
+
+.dir-help {
+  font-size: 12px;
+  color: var(--van-text-color-3, #999);
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
+.dir-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--van-border-color, #eee);
+}
+
+.dir-fields {
+  flex: 1;
+  min-width: 0;
+}
+
+.dir-remove {
+  flex-shrink: 0;
+  color: var(--van-danger-color, #ee0a24);
+  font-size: 20px;
+  padding: 8px;
+  margin-top: 32px;
+}
+
+.speed-section-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--van-primary-color, #1989fa);
+  padding: 12px 0 4px;
+  border-bottom: 1px solid var(--van-border-color, #eee);
+  margin-bottom: 4px;
+}
+</style>
