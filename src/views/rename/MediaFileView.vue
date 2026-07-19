@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { nextTick, onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { showToast } from 'vant'
 import { useModalStore } from '@/stores/modal'
 import { doAction } from '@/api/request'
@@ -41,6 +42,7 @@ const chipTypes: Record<string, string> = {
 const clickableChips = new Set(['title', 'tmdbid', 'name', 'season_episode'])
 
 const modal = useModalStore()
+const route = useRoute()
 const loading = ref(false)
 const currentDir = ref('')
 const pathInput = ref('')
@@ -131,7 +133,31 @@ const treePath = ref('/')
 const treeItems = ref<FileItem[]>([])
 const treeLoading = ref(false)
 
-onMounted(() => {
+function getParentDir(p: string) {
+  const idx = p.lastIndexOf('/')
+  if (idx <= 0) return '/'
+  return p.slice(0, idx)
+}
+
+onMounted(async () => {
+  const queryPath = route.query.path as string
+  if (queryPath) {
+    currentDir.value = queryPath
+    loadFiles(queryPath)
+    return
+  }
+  try {
+    const res = await doAction<{ code: number; config?: Record<string, unknown> }>('get_config', {})
+    if (res.code === 0) {
+      const dirs = res.config?.downloaddir as Array<{ save_path?: string }> | undefined
+      if (dirs && dirs.length > 0 && dirs[0].save_path) {
+        const p = getParentDir(dirs[0].save_path)
+        currentDir.value = p
+        loadFiles(p)
+        return
+      }
+    }
+  } catch { /* ignore */ }
   currentDir.value = '/'
   loadFiles('/')
 })
@@ -420,7 +446,7 @@ function formatSize(s: string): string {
     <div class="toolbar">
       <van-field v-model="pathInput" placeholder="输入目录路径" @keyup.enter="goInput">
         <template #left-icon><van-icon name="search" @click="goInput" /></template>
-        <template #button><van-button size="small" @click="goInput">前往</van-button></template>
+        <template #button><van-button size="small"  plain @click="goInput">前往</van-button></template>
       </van-field>
     </div>
 
@@ -435,14 +461,14 @@ function formatSize(s: string): string {
     </div>
 
     <div class="action-bar">
-      <van-button size="small" round plain type="warning" icon="share-o" @click="openTransferDir">转移目录</van-button>
-      <van-button size="small" round plain type="primary" icon="refresh" @click="loadFiles(currentDir)">刷新</van-button>
+      <van-button size="small"  plain type="warning" icon="share-o" @click="openTransferDir">转移目录</van-button>
+      <van-button size="small"  plain type="primary" icon="refresh" @click="loadFiles(currentDir)">刷新</van-button>
     </div>
 
     <van-loading v-if="loading" size="20" style="padding:40px;text-align:center" />
 
     <div v-else class="file-grid">
-      <div v-for="f in files" :key="f.path" class="file-card">
+      <div v-for="f in files" :key="f.path" class="file-card" :class="{ 'file-card-dir': f.is_dir }">
         <div class="file-icon" @click="onFileClick(f)">
           <van-icon :name="f.is_dir ? 'folder-o' : 'description-o'" :color="f.is_dir ? '#ff976a' : '#1989fa'" size="26" />
         </div>
@@ -472,15 +498,15 @@ function formatSize(s: string): string {
         </div>
         <div class="file-actions">
           <template v-if="f.is_dir">
-            <van-button size="small" round plain type="primary" @click="loadFiles(f.path)">进入</van-button>
+            <van-button size="small" plain type="primary" icon="arrow" @click="loadFiles(f.path)">进入</van-button>
           </template>
           <template v-else>
             <van-button
-              size="small" round plain type="warning"
+              size="small"  plain type="warning"
               :loading="nameTestLoading[f.path]"
               @click="doNameTest(f)"
             >识别</van-button>
-            <van-button size="small" round plain type="primary" @click="openTransferFile(f)">转移</van-button>
+            <van-button size="small"  plain type="primary" @click="openTransferFile(f)">转移</van-button>
             <van-icon name="ellipsis" color="#c8c9cc" size="20" @click="openMoreActions(f)" />
           </template>
         </div>
@@ -490,22 +516,20 @@ function formatSize(s: string): string {
 
     <!-- More actions: rename / delete -->
     <van-action-sheet v-model:show="showMoreActions" :title="activeFile?.name || ''">
-      <div style="padding:16px">
-        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px">
-          <div class="action-btn" @click="activeFile && doRename(activeFile)"><van-icon name="edit" /> 重命名</div>
-          <div class="action-btn" @click="activeFile && doDelete(activeFile)" style="color:#ee0a24"><van-icon name="delete" /> 删除</div>
-        </div>
+      <div style="padding:16px;display:flex;gap:12px">
+        <van-button  block plain @click="activeFile && doRename(activeFile)" icon="edit">重命名</van-button>
+        <van-button  block plain type="danger" @click="activeFile && doDelete(activeFile)" icon="delete">删除</van-button>
       </div>
     </van-action-sheet>
 
-    <van-popup v-model:show="showRename" position="bottom" round :style="{ height: '30%' }" closeable title="重命名">
+    <van-popup v-model:show="showRename" position="bottom"  :style="{ height: '30%' }" closeable title="重命名">
       <van-form @submit="submitRename" style="padding:16px">
         <van-field v-model="renameNewName" label="新名称" :rules="[{ required: true }]" />
-        <van-button round block type="primary" native-type="submit">确认</van-button>
+        <van-button  block type="primary" native-type="submit">确认</van-button>
       </van-form>
     </van-popup>
 
-    <van-popup v-model:show="showTransfer" position="bottom" round :style="{ height: '85%' }" closeable :title="isTransferDir ? '转移目录' : '转移文件'">
+    <van-popup v-model:show="showTransfer" position="bottom"  :style="{ height: '85%' }" closeable :title="isTransferDir ? '转移目录' : '转移文件'">
       <van-form @submit="submitTransfer" style="padding:16px">
         <van-cell :title="'输入路径'" :value="isTransferDir ? currentDir : activeFile?.path" title-style="font-size:13px" value-style="font-size:11px;color:#969799;word-break:break-all" />
         <van-field v-model="transferForm.outpath" label="输出路径" placeholder="留空使用默认" />
@@ -524,7 +548,7 @@ function formatSize(s: string): string {
           </template>
         </van-field>
         <van-field name="tmdb" label="TMDB ID" placeholder="留空自动识别">
-          <template #button><van-button size="small" plain @click="openTmdbSearch">查询</van-button></template>
+          <template #button><van-button size="small"  plain @click="openTmdbSearch">查询</van-button></template>
           <template #input>
             <van-tag v-if="transferForm.tmdb" size="medium" closable @close="transferForm.tmdb = ''" style="margin-right:4px">{{ transferForm.tmdb }}</van-tag>
           </template>
@@ -535,7 +559,7 @@ function formatSize(s: string): string {
         <van-field v-if="transferForm.type !== 'MOV'" v-model="transferForm.episode_details" label="起始集[,终止集]" placeholder="如 1[,12]" />
         <van-field v-if="transferForm.type !== 'MOV'" v-model="transferForm.episode_offset" label="集数偏移" placeholder="如 0" type="number" />
         <div style="margin-top:16px">
-          <van-button round block type="primary" native-type="submit" :loading="transferLoading">开始转移</van-button>
+          <van-button  block type="primary" native-type="submit" :loading="transferLoading">开始转移</van-button>
         </div>
       </van-form>
     </van-popup>
@@ -549,7 +573,7 @@ function formatSize(s: string): string {
       </div>
     </van-overlay>
 
-    <van-popup v-model:show="showSyncmodPicker" position="bottom" round teleport="body" @closed="showTransfer = true">
+    <van-popup v-model:show="showSyncmodPicker" position="bottom"  teleport="body" @closed="showTransfer = true">
       <van-picker
         :columns="SYNC_MODS"
         :default-index="SYNC_MODS.findIndex(s => s.value === transferForm.syncmod)"
@@ -558,11 +582,11 @@ function formatSize(s: string): string {
       />
     </van-popup>
 
-    <van-popup v-model:show="showTmdbSearch" position="bottom" round :style="{ height: '70%' }" closeable title="查询TMDB ID">
+    <van-popup v-model:show="showTmdbSearch" position="bottom"  :style="{ height: '70%' }" closeable title="查询TMDB ID">
       <div style="padding:56px 12px 12px">
         <div style="display:flex;gap:8px;margin-bottom:12px">
           <van-field v-model="tmdbSearchKeyword" placeholder="输入标题" style="flex:1" @keyup.enter="searchTmdb" />
-          <van-button size="small" type="primary" @click="searchTmdb">搜索</van-button>
+          <van-button size="small"  plain type="primary" @click="searchTmdb">搜索</van-button>
         </div>
         <van-loading v-if="tmdbSearchLoading" size="16" style="padding:20px;text-align:center" />
         <van-empty v-else-if="tmdbSearchKeyword && tmdbSearchResults.length === 0" description="无搜索结果" />
@@ -579,7 +603,7 @@ function formatSize(s: string): string {
       </div>
     </van-popup>
 
-    <van-popup v-model:show="showTree" position="bottom" round :style="{ height: '65%' }" closeable title="目录树">
+    <van-popup v-model:show="showTree" position="bottom"  :style="{ height: '65%' }" closeable title="目录树">
       <div style="padding:8px 12px;overflow-y:auto;max-height:calc(65vh - 50px)">
         <div class="tree-nav">
           <van-icon name="arrow-left" :style="{ opacity: treePath !== '/' ? 1 : 0.3 }" @click="treeGoUp" />
@@ -610,26 +634,23 @@ function formatSize(s: string): string {
 .action-bar { display:flex;gap:8px;padding:4px 4px 8px; }
 .file-grid { display:flex;flex-direction:column;gap:6px; }
 .file-card {
-  display:flex;align-items:flex-start;gap:10px;padding:10px 12px;
-  background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.04);
+  display:flex;align-items:flex-start;gap:10px;padding:12px;
+  backg:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.06);
 }
 .file-icon { padding-top:2px;flex-shrink:0; }
 .file-body { flex:1;overflow:hidden;min-width:0; }
-.file-name { font-size:14px;color:#323233;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.file-name { font-size:14px;font-weight:600;color:#323233;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .file-meta { font-size:11px;color:#969799;gap:6px;display:flex;margin-top:2px; }
 .chips-row { display:flex;flex-wrap:wrap;gap:4px;margin-top:6px; }
 .chip-clickable { cursor:pointer; }
-.file-actions { display:flex;align-items:center;gap:6px;flex-shrink:0;padding-top:2px; }
-.action-btn {
-  display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;
-  background:#f5f5f5;border-radius:8px;font-size:12px;cursor:pointer;
-}
-.action-btn:active { opacity:0.7; }
+.file-actions { display:flex;align-items:center;gap:8px;flex-shrink:0;padding-top:2px; }
+.file-card-dir { align-items: center; }
+.file-card-dir .file-actions { padding-top: 0; }
 .tree-node {
   display:flex;align-items:center;gap:8px;padding:10px 8px;cursor:pointer;border-bottom:1px solid #f5f5f5;
   font-size:14px;
 }
-.tree-node:active { background:#f5f5f5; }
+.tree-node:active { backg:#f5f5f5; }
 .tree-node-label { flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .tree-node-size { font-size:11px;color:#969799;flex-shrink:0; }
 .tree-nav { display:flex;align-items:center;gap:8px;padding:6px 0 10px;border-bottom:1px solid #f5f5f5;margin-bottom:8px; }
@@ -642,16 +663,9 @@ function formatSize(s: string): string {
 .tmdb-title { font-size:13px;font-weight:600;color:#323233;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .tmdb-year { font-size:11px;color:#969799; }
 .progress-box {
-  width:280px;padding:24px;background:#fff;border-radius:12px;text-align:center;
+  width:280px;padding:24px;backg:#fff;border-radius:12px;text-align:center;
 }
 .progress-title { font-size:14px;color:#323233;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .progress-text { font-size:13px;color:#969799; }
-.syncmod-option {
-  display:flex;align-items:center;justify-content:space-between;
-  padding:14px 8px;font-size:15px;color:#323233;border-bottom:1px solid #f5f5f5;
-  cursor:pointer;
-}
-.syncmod-option:active { background:#f5f5f5; }
-.syncmod-option.active { color:#1989fa;font-weight:600; }
 .tmdb-overview { font-size:11px;color:#969799;margin-top:2px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical; }
 </style>

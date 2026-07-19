@@ -251,7 +251,7 @@ const spStates = [
             </template>
           </van-field>
           <div style="padding: 16px">
-            <van-button round block type="primary" native-type="submit">开始搜索</van-button>
+            <van-button block type="primary" native-type="submit">开始搜索</van-button>
           </div>
         </van-form>
       </div>

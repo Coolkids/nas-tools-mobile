@@ -107,6 +107,44 @@ function openNetTest() {
   )).finally(() => { netTestLoading.value = false })
 }
 
+async function copyText(text: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+    showToast('已复制到剪贴板')
+  } catch { showToast('复制失败') }
+}
+
+function openUrl(url: string) {
+  if (url) window.open(url, '_blank')
+}
+
+function searchTmdb(query: string) {
+  if (query) window.open(`https://www.themoviedb.org/search?query=${encodeURIComponent(query)}`, '_blank')
+}
+
+function toArray(v: unknown): string[] {
+  if (Array.isArray(v)) return v.filter(Boolean)
+  if (typeof v === 'string' && v) return [v]
+  return []
+}
+
+function getReplacedWords(data: NameTestData): string[] {
+  return toArray((data as any).replaced_words)
+}
+
+function hasReplacedWords(data: NameTestData): boolean {
+  return getReplacedWords(data).length > 0
+}
+
+function showOrgString(data: NameTestData): boolean {
+  if (!data.org_string) return false
+  const hasReplaced = hasReplacedWords(data)
+  const hasTmdb = !!data.tmdbid
+  if (hasReplaced) return true
+  if (!hasTmdb) return true
+  return false
+}
+
 onMounted(load)
 </script>
 
@@ -150,20 +188,63 @@ onMounted(load)
       <van-cell title="网络连通性测试" is-link @click="openNetTest" />
     </van-cell-group>
 
-    <van-action-sheet v-model:show="nameTestVisible" title="名称识别测试">
-      <div style="padding: 16px">
-        <van-field v-model="nameTestInput" placeholder="种子名/文件名等" @keypress.enter="doNameTest" />
-        <van-button round block type="primary" :loading="nameTestLoading" @click="doNameTest" style="margin-top:12px">
+    <van-popup v-model:show="nameTestVisible" position="center" :style="{ width: '92%', borderRadius: '8px' }">
+      <div class="name-test-popup">
+        <div class="popup-title">名称识别测试</div>
+        <van-field v-model="nameTestInput" placeholder="种子名/文件名等" clearable @keypress.enter="doNameTest" />
+        <van-button block type="primary" :loading="nameTestLoading" @click="doNameTest" style="margin-top:12px">
           {{ nameTestLoading ? '识别中...' : '识别' }}
         </van-button>
-        <div v-if="nameTestResult" style="margin-top:12px;font-size:13px">
+        <div v-if="nameTestResult" class="name-result-body">
           <template v-if="'title' in nameTestResult">
-            <van-tag type="warning">{{ '识别名称：' + (nameTestResult as NameTestData).name }}</van-tag>
-            <div style="margin-top:8px">
-              <van-tag type="success" style="margin:2px">标题：{{ (nameTestResult as NameTestData).title }}</van-tag>
-              <van-tag v-if="(nameTestResult as NameTestData).tmdbid" type="primary" style="margin:2px">TMDB: {{ (nameTestResult as NameTestData).tmdbid }}</van-tag>
-              <van-tag v-if="(nameTestResult as NameTestData).year" type="warning" style="margin:2px">年份：{{ (nameTestResult as NameTestData).year }}</van-tag>
-              <van-tag v-if="(nameTestResult as NameTestData).restype" style="margin:2px">质量：{{ (nameTestResult as NameTestData).restype }}</van-tag>
+            <div class="result-row">
+              <van-tag
+                :type="(nameTestResult as NameTestData).name === '无法识别' ? 'danger' : 'warning'"
+                class="tag-link"
+                @click="searchTmdb((nameTestResult as NameTestData).name)"
+              >识别名称：{{ (nameTestResult as NameTestData).name }}</van-tag>
+              <van-tag
+                v-if="showOrgString(nameTestResult as NameTestData)"
+                type="warning"
+                class="tag-wrap"
+              >识别用名：{{ (nameTestResult as NameTestData).org_string }}</van-tag>
+            </div>
+            <div v-if="hasReplacedWords(nameTestResult as NameTestData)" class="result-row">
+              <span class="chip-hint">应用替换词：</span>
+              <van-tag
+                v-for="(w, wi) in toArray(getReplacedWords(nameTestResult as NameTestData))"
+                :key="wi"
+                size="small"
+                plain
+              >{{ w }}</van-tag>
+            </div>
+            <div class="result-row">
+              <van-tag type="success" class="tag-link" @click="copyText((nameTestResult as NameTestData).title)">
+                <span class="tag-label">标题</span>：{{ (nameTestResult as NameTestData).title }}
+              </van-tag>
+              <van-tag
+                v-if="(nameTestResult as NameTestData).tmdbid"
+                type="primary"
+                class="tag-link"
+                @click="openUrl((nameTestResult as NameTestData).tmdblink)"
+              ><span class="tag-label">TMDB ID</span>：{{ (nameTestResult as NameTestData).tmdbid }}</van-tag>
+              <van-tag v-if="(nameTestResult as NameTestData).year" type="warning">年份：{{ (nameTestResult as NameTestData).year }}</van-tag>
+              <van-tag
+                v-if="(nameTestResult as NameTestData).season_episode"
+                type="warning"
+                class="tag-link"
+                @click="openUrl((nameTestResult as NameTestData).tmdb_S_E_link)"
+              ><span class="tag-label">季集</span>：{{ (nameTestResult as NameTestData).season_episode }}</van-tag>
+            </div>
+            <div class="result-row">
+              <van-tag v-if="(nameTestResult as NameTestData).restype" plain>质量：{{ (nameTestResult as NameTestData).restype }}</van-tag>
+              <van-tag v-if="(nameTestResult as NameTestData).effect" plain>特性：{{ (nameTestResult as NameTestData).effect }}</van-tag>
+              <van-tag v-if="(nameTestResult as NameTestData).category" type="primary" plain>类别：{{ (nameTestResult as NameTestData).category }}</van-tag>
+              <van-tag v-if="(nameTestResult as NameTestData).pix" plain>分辨率：{{ (nameTestResult as NameTestData).pix }}</van-tag>
+              <van-tag v-if="(nameTestResult as NameTestData).video_codec" plain>视频编码：{{ (nameTestResult as NameTestData).video_codec }}</van-tag>
+              <van-tag v-if="(nameTestResult as NameTestData).audio_codec" plain>音频编码：{{ (nameTestResult as NameTestData).audio_codec }}</van-tag>
+              <van-tag v-if="(nameTestResult as NameTestData).team" type="info" plain>制作组/字幕组：{{ (nameTestResult as NameTestData).team }}</van-tag>
+              <van-tag v-if="(nameTestResult as NameTestData).part" type="warning" plain>分集：{{ (nameTestResult as NameTestData).part }}</van-tag>
             </div>
           </template>
           <template v-else>
@@ -171,10 +252,11 @@ onMounted(load)
           </template>
         </div>
       </div>
-    </van-action-sheet>
+    </van-popup>
 
-    <van-action-sheet v-model:show="netTestVisible" title="网络连通性测试">
+    <van-popup v-model:show="netTestVisible" position="center" :style="{ width: '90%', borderRadius: '8px' }">
       <div style="padding: 16px">
+        <div style="font-size:16px;font-weight:600;margin-bottom:12px;text-align:center">网络连通性测试</div>
         <van-cell v-for="r in netTestResults" :key="r.target" :title="r.target">
           <template #value>
             <van-loading v-if="r.testing" size="16" />
@@ -182,7 +264,7 @@ onMounted(load)
           </template>
         </van-cell>
       </div>
-    </van-action-sheet>
+    </van-popup>
 
     <div style="height:20px" />
   </div>
@@ -200,4 +282,47 @@ onMounted(load)
 .stat-body { flex: 1; }
 .stat-value { font-size: 22px; font-weight: 700; line-height: 1.2; }
 .stat-label { font-size: 12px; color: #969799; }
+
+.name-test-popup {
+  padding: 16px;
+}
+.popup-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  text-align: center;
+}
+.name-result-body {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.result-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.chip-hint {
+  font-size: 12px;
+  color: #969799;
+}
+.tag-link {
+  cursor: pointer;
+}
+.tag-link:active {
+  opacity: 0.7;
+}
+.tag-label {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.tag-wrap {
+  white-space: normal;
+  word-break: break-all;
+  line-height: 1.4;
+  height: auto;
+  min-height: 24px;
+}
 </style>

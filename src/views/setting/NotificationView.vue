@@ -91,7 +91,7 @@ function toggleSwitch(name: string) {
 <template>
   <div class="notification page">
     <div style="padding:8px 12px">
-      <van-button round block type="primary" icon="plus" @click="onAdd">新增通知渠道</van-button>
+      <van-button block type="primary" icon="plus" @click="onAdd">新增通知渠道</van-button>
     </div>
 
     <van-loading v-if="loading" size="20" style="padding:40px;text-align:center" />
@@ -153,8 +153,8 @@ function toggleSwitch(name: string) {
         </div>
 
         <div style="margin-top:16px;display:flex;gap:8px">
-          <van-button round block plain @click="onTest">测试</van-button>
-          <van-button round block type="primary" native-type="submit">保存</van-button>
+          <van-button block plain @click="onTest">测试</van-button>
+          <van-button block type="primary" native-type="submit">保存</van-button>
         </div>
       </van-form>
     </van-popup>

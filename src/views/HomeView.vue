@@ -147,21 +147,21 @@ onMounted(load)
 
     <van-cell-group inset style="margin: 12px" v-if="history.length">
       <van-cell title="播放历史" />
-      <van-cell v-for="(item, i) in history" :key="i" :title="item.event" :label="item.date" />
+      <van-cell v-for="(item, i) in history.slice(0, 3)" :key="i" :title="item.event" :label="item.date" />
     </van-cell-group>
 
     <van-cell-group inset style="margin: 12px">
       <van-cell title="快捷操作" />
       <div class="quick-grid">
         <div v-for="card in [
-          { name: 'downloading', label: '正在下载', icon: 'downloading', color: '#1989fa' },
-          { name: 'history', label: '转移历史', icon: 'clock-o', color: '#07c160' },
+          { name: 'mediafile', label: '文件管理', icon: 'description-o', color: '#ee0a24' },
           { name: 'service', label: '服务', icon: 'service-o', color: '#7232dd' },
+          { name: 'history', label: '转移历史', icon: 'clock-o', color: '#07c160' },
           { name: 'unidentification', label: '手动识别', icon: 'edit', color: '#ee0a24' },
           { name: 'recommend', label: '发现', icon: 'fire-o', color: '#ff976a' },
           { name: 'ranking', label: '榜单', icon: 'bar-chart-o', color: '#1989fa' },
           { name: 'rss_history', label: '订阅历史', icon: 'records-o', color: '#07c160' },
-          { name: 'notification', label: '消息通知', icon: 'bell-o', color: '#7232dd' },
+          { name: 'rss_calendar', label: '订阅日历', icon: 'calendar-o', color: '#ff976a' },
         ]" :key="card.name" class="quick-card" @click="router.push({ name: card.name })">
           <div class="quick-icon" :style="{ background: card.color + '18', color: card.color }">
             <van-icon :name="card.icon" size="18" />

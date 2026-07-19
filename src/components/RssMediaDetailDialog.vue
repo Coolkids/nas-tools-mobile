@@ -64,7 +64,7 @@ async function onRemove() {
         <van-tag v-if="item.filter_pix" size="small">{{ item.filter_pix }}</van-tag>
         <van-tag v-if="item.filter_team" size="small" plain>{{ item.filter_team }}</van-tag>
       </div>
-      <van-button round block type="danger" @click="onRemove">取消订阅</van-button>
+      <van-button  block type="danger" @click="onRemove">取消订阅</van-button>
     </div>
   </van-action-sheet>
 </template>

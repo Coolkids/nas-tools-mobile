@@ -84,3 +84,73 @@ export async function uploadTorrentFile(file: File): Promise<{ code?: number; fi
 export function downloadSearchItem(id: string | number, dir: string, setting: string | number): Promise<{ retcode: number; retmsg?: string }> {
   return doAction<{ retcode: number; retmsg?: string }>('download', { id, dir, setting })
 }
+
+export interface TorrentRemoveTask {
+  id: string
+  name: string
+  downloader: string
+  action: number
+  interval: number
+  enabled: boolean
+  samedata: boolean
+  onlynastool: boolean
+  config: {
+    ratio?: number
+    seeding_time?: number
+    upload_avs?: number
+    size?: [number, number]
+    tags?: string[]
+    savepath_key?: string
+    tracker_key?: string
+    qb_category?: string[]
+    qb_state?: string[]
+    tr_state?: string[]
+    tr_error_key?: string
+  }
+}
+
+export interface TorrentRemoveTaskListResult {
+  code: number
+  result?: Record<string, TorrentRemoveTask>
+}
+
+export interface TorrentRemoveTaskDetailResult {
+  code: number
+  detail?: TorrentRemoveTask
+}
+
+export interface RemoveTorrentItem {
+  name: string
+  site: string
+  size: number
+}
+
+export interface RemoveTorrentsResult {
+  code: number
+  data?: RemoveTorrentItem[]
+  msg?: string
+}
+
+export function getTorrentRemoveTasks(): Promise<TorrentRemoveTaskListResult> {
+  return doAction<TorrentRemoveTaskListResult>('get_torrent_remove_tasks', {})
+}
+
+export function getTorrentRemoveTask(tid: string): Promise<TorrentRemoveTaskDetailResult> {
+  return doAction<TorrentRemoveTaskDetailResult>('get_torrent_remove_task', { tid })
+}
+
+export function updateTorrentRemoveTask(params: Record<string, unknown>): Promise<{ code: number; msg?: string }> {
+  return doAction<{ code: number; msg?: string }>('update_torrent_remove_task', params)
+}
+
+export function deleteTorrentRemoveTask(tid: string): Promise<{ code: number }> {
+  return doAction<{ code: number }>('delete_torrent_remove_task', { tid })
+}
+
+export function getRemoveTorrents(tid: string): Promise<RemoveTorrentsResult> {
+  return doAction<RemoveTorrentsResult>('get_remove_torrents', { tid })
+}
+
+export function autoRemoveTorrents(tid: string): Promise<{ code: number; msg?: string }> {
+  return doAction<{ code: number; msg?: string }>('auto_remove_torrents', { tid })
+}

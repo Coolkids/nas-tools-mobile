@@ -86,7 +86,7 @@ async function onSaveRule() {
 <template>
   <div class="filter-rule page">
     <div style="padding:8px 12px">
-      <van-button round block type="primary" icon="plus" @click="onAddGroup">新增规则组</van-button>
+      <van-button block type="primary" icon="plus" @click="onAddGroup">新增规则组</van-button>
     </div>
 
     <van-loading v-if="loading" size="20" style="padding:40px;text-align:center" />
@@ -112,7 +112,7 @@ async function onSaveRule() {
     <van-popup v-model:show="showEditGroup" position="bottom" round :style="{ height: '35%' }" closeable title="规则组">
       <van-form @submit="onSaveGroup" style="padding:16px">
         <van-field v-model="editingGroup.name" label="组名" :rules="[{ required: true }]" />
-        <div style="margin-top:16px"><van-button round block type="primary" native-type="submit">创建</van-button></div>
+        <div style="margin-top:16px"><van-button block type="primary" native-type="submit">创建</van-button></div>
       </van-form>
     </van-popup>
 
@@ -132,7 +132,7 @@ async function onSaveRule() {
             </van-radio-group>
           </template>
         </van-field>
-        <div style="margin-top:16px"><van-button round block type="primary" native-type="submit">保存</van-button></div>
+        <div style="margin-top:16px"><van-button block type="primary" native-type="submit">保存</van-button></div>
       </van-form>
     </van-popup>
   </div>

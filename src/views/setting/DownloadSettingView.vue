@@ -65,7 +65,7 @@ async function onDelete(item: DownloadSetting) {
 <template>
   <div class="download-setting page">
     <div style="padding:8px 12px">
-      <van-button round block type="primary" icon="plus" @click="onAdd">新增下载设置</van-button>
+      <van-button block type="primary" icon="plus" @click="onAdd">新增下载设置</van-button>
     </div>
 
     <van-loading v-if="loading" size="20" style="padding:40px;text-align:center" />
@@ -121,7 +121,7 @@ async function onDelete(item: DownloadSetting) {
         <van-field v-model="editing.download_limit" label="下载限速(KB/s)" type="number" />
         <van-field v-model="editing.ratio_limit" label="分享率限制" type="number" />
         <van-field v-model="editing.seeding_time_limit" label="做种时间(分钟)" type="number" />
-        <div style="margin-top:16px"><van-button round block type="primary" native-type="submit">保存</van-button></div>
+        <div style="margin-top:16px"><van-button block type="primary" native-type="submit">保存</van-button></div>
       </van-form>
     </van-popup>
   </div>

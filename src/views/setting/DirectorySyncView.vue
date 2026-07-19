@@ -77,7 +77,7 @@ async function onToggle(item: SyncPath) {
 <template>
   <div class="directory-sync page">
     <div style="padding:8px 12px">
-      <van-button round block type="primary" icon="plus" @click="onAdd">新增同步目录</van-button>
+      <van-button block type="primary" icon="plus" @click="onAdd">新增同步目录</van-button>
     </div>
 
     <van-loading v-if="loading" size="20" style="padding:40px;text-align:center" />
@@ -121,7 +121,7 @@ async function onToggle(item: SyncPath) {
         <van-field name="enabled" label="启用">
           <template #input><van-switch v-model="editing.enabled" /></template>
         </van-field>
-        <div style="margin-top:16px"><van-button round block type="primary" native-type="submit">保存</van-button></div>
+        <div style="margin-top:16px"><van-button block type="primary" native-type="submit">保存</van-button></div>
       </van-form>
     </van-popup>
   </div>

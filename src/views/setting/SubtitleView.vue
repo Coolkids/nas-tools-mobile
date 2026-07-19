@@ -71,7 +71,7 @@ async function onSave() {
       </van-cell-group>
 
       <div style="margin-top:16px">
-        <van-button round block type="primary" native-type="submit" :loading="saving">保存设置</van-button>
+        <van-button block type="primary" native-type="submit" :loading="saving">保存设置</van-button>
       </div>
     </van-form>
   </div>

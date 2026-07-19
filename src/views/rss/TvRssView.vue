@@ -51,7 +51,7 @@ function onCardClick(item: RssMediaItem) {
 <template>
   <div class="tv-rss page">
     <div style="padding: 8px 12px">
-      <van-button round block type="primary" icon="plus" @click="showAdd = true">新增订阅</van-button>
+      <van-button  block type="primary" icon="plus" @click="showAdd = true">新增订阅</van-button>
     </div>
 
     <van-loading v-if="loading" size="20" style="padding:40px;text-align:center" />
@@ -71,6 +71,12 @@ function onCardClick(item: RssMediaItem) {
                 <van-tag v-if="item.over_edition" size="small" type="danger">洗版</van-tag>
               </div>
               <div class="info-name">{{ item.name }} <span v-if="item.season && item.season !== 'S00'" class="info-season">{{ item.season }}</span></div>
+              <div class="info-meta">
+                <span v-if="item.total_ep || item.total" class="meta-ep">
+                  {{ item.current_ep || (item.total ? item.total - (item.lack || 0) : '?') }}/{{ item.total_ep || item.total }} 集
+                </span>
+                <span v-if="item.filter_team" class="meta-team">{{ item.filter_team }}</span>
+              </div>
               <div v-if="item.total && item.total > 0" class="info-progress">
                 <van-progress :percentage="progressOf(item)" :stroke-width="4" :show-pivot="false" />
               </div>
@@ -90,7 +96,7 @@ function onCardClick(item: RssMediaItem) {
 .rss-card { border-radius: 8px; overflow: hidden; }
 .card-bg { position: relative; height: 160px; overflow: hidden; display: flex; }
 .bg-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; }
-.card-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(6px); z-index: 1; }
+.card-overlay { position: absolute; inset: 0; backg: rgba(0,0,0,0.5); backdrop-filter: blur(6px); z-index: 1; }
 .card-content { position: relative; z-index: 2; flex: 1; padding: 12px; display: flex; gap: 12px; }
 .card-poster { width: 80px; height: 110px; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); flex-shrink: 0; object-fit: cover; }
 .card-info { flex: 1; display: flex; flex-direction: column; gap: 4px; padding-top: 4px; }
@@ -98,5 +104,7 @@ function onCardClick(item: RssMediaItem) {
 .info-year { font-size: 14px; color: rgba(255,255,255,0.8); }
 .info-name { font-size: 16px; font-weight: 600; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .info-season { font-size: 13px; color: rgba(255,255,255,0.7); }
+.info-meta { display: flex; align-items: center; gap: 6px; font-size: 13px; color: rgba(255,255,255,0.7); }
+.meta-team { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .info-progress { margin-top: 4px; }
 </style>

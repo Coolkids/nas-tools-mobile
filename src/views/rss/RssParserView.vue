@@ -58,7 +58,7 @@ async function onSubmit() {
 <template>
   <div class="rss-parser page">
     <div style="padding:8px 12px">
-      <van-button round block type="primary" icon="plus" @click="onAdd">新增解析器</van-button>
+      <van-button block type="primary" icon="plus" @click="onAdd">新增解析器</van-button>
     </div>
 
     <van-empty v-if="!loading && items.length === 0" description="暂无RSS解析器" />
@@ -86,7 +86,7 @@ async function onSubmit() {
           <van-field v-model="form.format" label="格式" placeholder="如 RSS/Atom" />
           <van-field v-model="form.params" label="参数" type="textarea" :rows="3" placeholder="解析参数" />
           <div style="margin-top:16px">
-            <van-button round block type="primary" native-type="submit">保存</van-button>
+            <van-button block type="primary" native-type="submit">保存</van-button>
           </div>
         </van-form>
       </div>

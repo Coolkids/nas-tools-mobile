@@ -29,6 +29,19 @@ const uploadingNames: string[] = []
 const submitting = ref(false)
 const activeTab = ref(props.manualType || 'torrent')
 
+const showDlSettingPicker = ref(false)
+const showDlDirPicker = ref(false)
+
+const dlSettingColumns = computed(() => [{ text: '默认', value: '' }, ...downloadSettings.value.map(d => ({ text: d.name, value: d.id }))])
+const dlDirColumns = computed(() => [{ text: '自动', value: '' }, ...savePaths.value.map(p => ({ text: p, value: p }))])
+
+const dlSettingText = computed(() => {
+  if (!form.dl_setting) return '默认'
+  const found = downloadSettings.value.find(d => d.id === form.dl_setting)
+  return found ? found.name : '默认'
+})
+const dlDirText = computed(() => form.dl_dir || '自动')
+
 watch(() => props.modelValue, async (open) => {
   if (!open) return
   form.dl_setting = ''
@@ -87,25 +100,18 @@ async function submit() {
 </script>
 
 <template>
-  <van-popup v-model:show="visible" position="bottom" round :style="{ height: '70%' }" closeable :title="title || '添加下载'">
+  <van-popup v-model:show="visible" position="bottom"  :style="{ height: '70%' }" closeable :title="title || '添加下载'">
     <div style="padding: 16px">
       <van-form @submit="submit">
-        <van-field name="dl_setting" label="下载设置">
-          <template #input>
-            <van-radio-group v-model="form.dl_setting" direction="horizontal">
-              <van-radio name="" shape="square">默认</van-radio>
-              <van-radio v-for="d in downloadSettings" :key="d.id" :name="d.id" shape="square">{{ d.name }}</van-radio>
-            </van-radio-group>
-          </template>
-        </van-field>
-        <van-field name="dl_dir" label="保存目录">
-          <template #input>
-            <van-radio-group v-model="form.dl_dir" direction="horizontal">
-              <van-radio name="" shape="square">自动</van-radio>
-              <van-radio v-for="p in savePaths" :key="p" :name="p" shape="square">{{ p }}</van-radio>
-            </van-radio-group>
-          </template>
-        </van-field>
+        <van-field v-model="dlSettingText" is-link readonly name="dl_setting" label="下载设置" placeholder="请选择" @click="showDlSettingPicker = true" />
+        <van-popup v-model:show="showDlSettingPicker" position="bottom" >
+          <van-picker :columns="dlSettingColumns" @confirm="({ selectedOptions }: any) => { form.dl_setting = selectedOptions[0].value; showDlSettingPicker = false; onDownloadSettingChange(selectedOptions[0].value) }" @cancel="showDlSettingPicker = false" style="height: 300px" />
+        </van-popup>
+
+        <van-field v-model="dlDirText" is-link readonly name="dl_dir" label="保存目录" placeholder="请选择" @click="showDlDirPicker = true" />
+        <van-popup v-model:show="showDlDirPicker" position="bottom" >
+          <van-picker :columns="dlDirColumns" @confirm="({ selectedOptions }: any) => { form.dl_dir = selectedOptions[0].value; showDlDirPicker = false }" @cancel="showDlDirPicker = false" style="height: 300px" />
+        </van-popup>
 
         <template v-if="mode === 'manual'">
           <van-tabs v-model:active="activeTab">
@@ -119,7 +125,7 @@ async function submit() {
         </template>
 
         <div style="margin-top: 16px">
-          <van-button round block type="primary" native-type="submit" :loading="submitting">下载</van-button>
+          <van-button  block type="primary" native-type="submit" :loading="submitting">下载</van-button>
         </div>
       </van-form>
     </div>

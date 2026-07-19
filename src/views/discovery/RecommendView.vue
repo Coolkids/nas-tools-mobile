@@ -266,8 +266,8 @@ interface RankingSection {
   loaded: boolean
 }
 
-const weekDayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
-const todayWeek = new Date().getDay()
+const weekDayNames: Record<number, string> = { 1: '周一', 2: '周二', 3: '周三', 4: '周四', 5: '周五', 6: '周六', 7: '周日' }
+const todayWeek = (new Date().getDay() || 7)
 
 const rankingSections = ref<RankingSection[]>([
   { title: 'TMDB热门', route: 'tmdb_movie', items: [], loaded: false },
@@ -363,7 +363,7 @@ onBeforeUnmount(() => {
           <div v-for="item in section.items" :key="item.id" class="ranking-card" @click="goDetail(item)">
             <img :src="proxyDoubanImage(item.image)" class="ranking-poster" />
             <div class="ranking-name">{{ item.title }}</div>
-            <div v-if="item.vote" class="ranking-vote">{{ item.vote }}</div>
+            <div v-if="item.vote" class="ranking-vote">{{ String(item.vote).replace(/[\[\]]/g, '').trim() }}</div>
           </div>
         </div>
         <div v-else class="ranking-loading"><van-loading size="16" /></div>

@@ -108,7 +108,7 @@ function wordTypeLabel(word: CustomWord) {
 <template>
   <div class="custom-words page">
     <div style="padding:8px 12px">
-      <van-button round block type="primary" icon="plus" @click="onAddGroup">新增分组</van-button>
+      <van-button block type="primary" icon="plus" @click="onAddGroup">新增分组</van-button>
     </div>
 
     <van-loading v-if="loading" size="20" style="padding:40px;text-align:center" />
@@ -154,7 +154,7 @@ function wordTypeLabel(word: CustomWord) {
         <van-field name="enabled" label="启用">
           <template #input><van-switch v-model="editingWord.enabled!" /></template>
         </van-field>
-        <div style="margin-top:16px"><van-button round block type="primary" native-type="submit">保存</van-button></div>
+        <div style="margin-top:16px"><van-button block type="primary" native-type="submit">保存</van-button></div>
       </van-form>
     </van-popup>
 
@@ -170,7 +170,7 @@ function wordTypeLabel(word: CustomWord) {
             </van-radio-group>
           </template>
         </van-field>
-        <div style="margin-top:16px"><van-button round block type="primary" native-type="submit">创建</van-button></div>
+        <div style="margin-top:16px"><van-button block type="primary" native-type="submit">创建</van-button></div>
       </van-form>
     </van-popup>
   </div>

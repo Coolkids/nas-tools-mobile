@@ -316,3 +316,38 @@ export function getRssDetail(rssid: string | number, type: RssType): Promise<{ c
 export function refreshRss(rssid: string | number, type: RssType): Promise<SimpleResult> {
   return doAction<SimpleResult>('refresh_rss', { rssid, type })
 }
+
+export interface MovieCalendarData {
+  id?: string | number
+  title?: string
+  start?: string
+  poster?: string
+  vote_average?: string | number
+  year?: string
+  type?: string
+  rssid?: string | number
+}
+
+export interface TvCalendarEvent {
+  id: string | number
+  title: string
+  start: string
+  poster?: string
+  vote_average?: string | number
+  year?: string
+  type?: string
+  rssid?: string | number
+}
+
+export interface TvCalendarResult {
+  code: number
+  events?: TvCalendarEvent[]
+}
+
+export function getMovieCalendarData(params: { id: string | number; rssid?: string | number }): Promise<MovieCalendarData> {
+  return doAction<MovieCalendarData>('movie_calendar_data', params)
+}
+
+export function getTvCalendarData(params: { id: string | number; season: string | number; name?: string; rssid?: string | number }): Promise<TvCalendarResult> {
+  return doAction<TvCalendarResult>('tv_calendar_data', params)
+}

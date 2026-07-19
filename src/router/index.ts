@@ -87,7 +87,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/downloaded',
     name: 'downloaded',
-    component: () => import('@/views/discovery/RecommendView.vue'),
+    component: () => import('@/views/download/DownloadedView.vue'),
     meta: { title: '最近下载' }
   },
 

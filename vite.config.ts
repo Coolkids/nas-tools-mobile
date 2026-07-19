@@ -21,7 +21,7 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     proxy: {
-      '/do': { target: FLASK_TARGET, changeOrigin: true },
+      '^/do(\\?.*)?$': { target: FLASK_TARGET, changeOrigin: true},
       '/login_json': { target: FLASK_TARGET, changeOrigin: true },
       '/logout_json': { target: FLASK_TARGET, changeOrigin: true },
       '/dirlist': { target: FLASK_TARGET, changeOrigin: true },

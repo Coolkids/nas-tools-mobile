@@ -67,7 +67,7 @@ async function onDelete(user: User) {
 <template>
   <div class="users page">
     <div style="padding:8px 12px">
-      <van-button round block type="primary" icon="plus" @click="onAdd">新增用户</van-button>
+      <van-button block type="primary" icon="plus" @click="onAdd">新增用户</van-button>
     </div>
 
     <van-loading v-if="loading" size="20" style="padding:40px;text-align:center" />
@@ -89,7 +89,7 @@ async function onDelete(user: User) {
         <van-checkbox-group v-model="editing.pris" :model-value="Object.keys(editing.pris).filter(k => editing.pris[k])" @update:model-value="(vals: string[]) => { const p: Record<string, boolean> = {}; perms.forEach(pp => { p[pp.key] = vals.includes(pp.key) }); editing.pris = p }">
           <van-checkbox v-for="p in perms" :key="p.key" :name="p.key" shape="square" style="padding:10px 16px">{{ p.label }}</van-checkbox>
         </van-checkbox-group>
-        <div style="margin-top:16px"><van-button round block type="primary" native-type="submit">添加</van-button></div>
+        <div style="margin-top:16px"><van-button block type="primary" native-type="submit">添加</van-button></div>
       </van-form>
     </van-popup>
   </div>

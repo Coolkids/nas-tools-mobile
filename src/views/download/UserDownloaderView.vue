@@ -61,7 +61,7 @@ async function onDelete(item: UserDownloader) {
 <template>
   <div class="user-downloader page">
     <div style="padding:8px 12px">
-      <van-button round block type="primary" icon="plus" @click="onAdd">新增下载器</van-button>
+      <van-button block type="primary" icon="plus" @click="onAdd">新增下载器</van-button>
     </div>
 
     <van-loading v-if="loading" size="20" style="padding:40px;text-align:center" />
@@ -93,7 +93,7 @@ async function onDelete(item: UserDownloader) {
           <template #input><van-switch v-model="editing.enabled!" /></template>
         </van-field>
         <div style="margin-top:16px">
-          <van-button round block type="primary" native-type="submit">保存</van-button>
+          <van-button block type="primary" native-type="submit">保存</van-button>
         </div>
       </van-form>
     </van-popup>

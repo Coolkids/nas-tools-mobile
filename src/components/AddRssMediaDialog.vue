@@ -20,9 +20,41 @@ const emit = defineEmits<{
 
 const visible = computed({ get: () => props.modelValue, set: (v) => emit('update:modelValue', v) })
 
-const FORM_SEASONS = Array.from({ length: 50 }, (_, i) => ({ value: `${i + 1}`, label: `第${i + 1}季` }))
+const FORM_SEASONS = Array.from({ length: 50 }, (_, i) => ({ text: `第${i + 1}季`, value: `${i + 1}` }))
+const showSeasonPicker = ref(false)
+const seasonText = computed(() => {
+  if (!form.season) return ''
+  const found = FORM_SEASONS.find(s => s.value === form.season)
+  return found ? found.text : ''
+})
 const RESTYPE_OPTIONS = ['BLURAY', 'REMUX', 'DOLBY', 'WEB', 'HDTV', 'UHD', 'HDR', '3D']
 const PIX_OPTIONS = ['8k', '4k', '1080p', '720p']
+
+const showRestypePicker = ref(false)
+const showPixPicker = ref(false)
+const showRulePicker = ref(false)
+const showDownloadSettingPicker = ref(false)
+const showSavePathPicker = ref(false)
+
+const restypeColumns = [{ text: '全部', value: '' }, ...RESTYPE_OPTIONS.map(r => ({ text: r, value: r }))]
+const pixColumns = [{ text: '全部', value: '' }, ...PIX_OPTIONS.map(p => ({ text: p, value: p }))]
+const ruleColumns = computed(() => [{ text: '全部', value: '' }, ...ruleGroups.value.map(r => ({ text: r.name, value: r.id }))])
+const downloadSettingColumns = computed(() => [{ text: '站点设置', value: '' }, ...downloadSettings.value.map(d => ({ text: d.name, value: d.id }))])
+const savePathColumns = computed(() => [{ text: '自动', value: '' }, ...savePaths.value.map(p => ({ text: p, value: p }))])
+
+const restypeText = computed(() => form.filter_restype || '全部')
+const pixText = computed(() => form.filter_pix || '全部')
+const ruleText = computed(() => {
+  if (!form.filter_rule) return '全部'
+  const found = ruleGroups.value.find(r => r.id === form.filter_rule)
+  return found ? found.name : '全部'
+})
+const downloadSettingText = computed(() => {
+  if (!form.download_setting) return '站点设置'
+  const found = downloadSettings.value.find(d => d.id === form.download_setting)
+  return found ? found.name : '站点设置'
+})
+const savePathText = computed(() => form.save_path || '自动')
 
 const form = reactive({
   name: '', year: '', keyword: '', season: '', fuzzy_match: false, over_edition: false,
@@ -159,7 +191,7 @@ async function submit(keepOpen = false) {
 </script>
 
 <template>
-  <van-popup v-model:show="visible" position="bottom" round :style="{ height: '85%' }" closeable :title="props.rssid ? '编辑订阅' : '新增订阅'">
+  <van-popup v-model:show="visible" position="bottom"  :style="{ height: '85%' }" closeable :title="props.rssid ? '编辑订阅' : '新增订阅'">
     <div style="padding: 16px">
       <van-steps :active="activeStep === 'basic' ? 0 : 1">
         <van-step>基本信息</van-step>
@@ -171,12 +203,25 @@ async function submit(keepOpen = false) {
           <van-field v-model="form.name" label="标题" placeholder="请输入标题" :rules="[{ required: true, message: '请输入标题' }]" />
           <van-field v-model="form.year" label="年份" placeholder="年份" />
           <van-field v-model="form.keyword" label="搜索词" placeholder="留空使用TMDB数据" />
-          <van-field v-if="type === 'TV'" name="season" label="季" :rules="[{ required: !form.fuzzy_match, message: '请选择季' }]">
-            <template #input>
-              <van-picker :columns="FORM_SEASONS.map(s => s.label)" @confirm="(v: string, i: number) => form.season = FORM_SEASONS[i].value" />
-              <van-tag v-if="form.season" type="primary" closable @close="form.season = ''">第{{ form.season }}季</van-tag>
-            </template>
-          </van-field>
+          <van-field
+            v-if="type === 'TV'"
+            v-model="seasonText"
+            is-link
+            readonly
+            name="season"
+            label="季"
+            placeholder="请选择季"
+            :rules="[{ required: !form.fuzzy_match, message: '请选择季' }]"
+            @click="showSeasonPicker = true"
+          />
+          <van-popup v-model:show="showSeasonPicker" position="bottom" >
+            <van-picker
+              :columns="FORM_SEASONS"
+              @confirm="({ selectedOptions }: any) => { form.season = selectedOptions[0].value; showSeasonPicker = false }"
+              @cancel="showSeasonPicker = false"
+              style="height: 300px"
+            />
+          </van-popup>
           <van-field v-if="type === 'TV'" v-model="form.total_ep" label="总集数" placeholder="留空使用TMDB数据" />
           <van-field v-if="type === 'TV'" v-model="form.current_ep" label="开始集数" placeholder="开始订阅集数" />
           <van-field name="fuzzy_match" label="模糊匹配">
@@ -186,58 +231,58 @@ async function submit(keepOpen = false) {
             <template #input><van-switch v-model="form.over_edition" /></template>
           </van-field>
           <div style="margin-top: 16px">
-            <van-button round block type="primary" native-type="submit">下一步</van-button>
+            <van-button  block type="primary" native-type="submit">下一步</van-button>
           </div>
         </van-form>
       </template>
 
       <template v-else>
         <van-form @submit="submit()" style="margin-top: 12px">
-          <van-field name="filter_restype" label="质量">
-            <template #input>
-              <van-radio-group v-model="form.filter_restype" direction="horizontal">
-                <van-radio name="" shape="square">全部</van-radio>
-                <van-radio v-for="r in RESTYPE_OPTIONS" :key="r" :name="r" shape="square">{{ r }}</van-radio>
-              </van-radio-group>
-            </template>
-          </van-field>
-          <van-field name="filter_pix" label="分辨率">
-            <template #input>
-              <van-radio-group v-model="form.filter_pix" direction="horizontal">
-                <van-radio name="" shape="square">全部</van-radio>
-                <van-radio v-for="p in PIX_OPTIONS" :key="p" :name="p" shape="square">{{ p }}</van-radio>
-              </van-radio-group>
-            </template>
-          </van-field>
+          <van-field v-model="restypeText" is-link readonly name="filter_restype" label="质量" placeholder="请选择质量" @click="showRestypePicker = true" />
+          <van-popup v-model:show="showRestypePicker" position="bottom" >
+            <van-picker :columns="restypeColumns" @confirm="({ selectedOptions }: any) => { form.filter_restype = selectedOptions[0].value; showRestypePicker = false }" @cancel="showRestypePicker = false" style="height: 300px" />
+          </van-popup>
+
+          <van-field v-model="pixText" is-link readonly name="filter_pix" label="分辨率" placeholder="请选择分辨率" @click="showPixPicker = true" />
+          <van-popup v-model:show="showPixPicker" position="bottom" >
+            <van-picker :columns="pixColumns" @confirm="({ selectedOptions }: any) => { form.filter_pix = selectedOptions[0].value; showPixPicker = false }" @cancel="showPixPicker = false" style="height: 300px" />
+          </van-popup>
+
           <van-field v-model="form.filter_team" label="制作组" placeholder="支持正则" />
-          <van-field name="filter_rule" label="过滤规则">
+
+          <van-field v-model="ruleText" is-link readonly name="filter_rule" label="过滤规则" placeholder="请选择过滤规则" @click="showRulePicker = true" />
+          <van-popup v-model:show="showRulePicker" position="bottom" >
+            <van-picker :columns="ruleColumns" @confirm="({ selectedOptions }: any) => { form.filter_rule = selectedOptions[0].value; showRulePicker = false }" @cancel="showRulePicker = false" style="height: 300px" />
+          </van-popup>
+
+          <van-field v-model="downloadSettingText" is-link readonly name="download_setting" label="下载设置" placeholder="请选择下载设置" @click="showDownloadSettingPicker = true" />
+          <van-popup v-model:show="showDownloadSettingPicker" position="bottom" >
+            <van-picker :columns="downloadSettingColumns" @confirm="({ selectedOptions }: any) => { form.download_setting = selectedOptions[0].value; showDownloadSettingPicker = false; onDownloadSettingChange(selectedOptions[0].value) }" @cancel="showDownloadSettingPicker = false" style="height: 300px" />
+          </van-popup>
+
+          <van-field v-model="savePathText" is-link readonly name="save_path" label="保存路径" placeholder="请选择保存路径" @click="showSavePathPicker = true" />
+          <van-popup v-model:show="showSavePathPicker" position="bottom" >
+            <van-picker :columns="savePathColumns" @confirm="({ selectedOptions }: any) => { form.save_path = selectedOptions[0].value; showSavePathPicker = false }" @cancel="showSavePathPicker = false" style="height: 300px" />
+          </van-popup>
+
+          <van-field name="rss_sites" label="RSS站点">
             <template #input>
-              <van-radio-group v-model="form.filter_rule" direction="horizontal">
-                <van-radio name="" shape="square">全部</van-radio>
-                <van-radio v-for="r in ruleGroups" :key="r.id" :name="r.id" shape="square">{{ r.name }}</van-radio>
-              </van-radio-group>
+              <van-checkbox-group v-model="rssSitesSelected" direction="horizontal" class="site-checkboxes">
+                <van-checkbox v-for="s in rssSites" :key="s" :name="s" shape="square">{{ s }}</van-checkbox>
+              </van-checkbox-group>
             </template>
           </van-field>
-          <van-field name="download_setting" label="下载设置">
+          <van-field name="search_sites" label="搜索站点">
             <template #input>
-              <van-radio-group v-model="form.download_setting" direction="horizontal" @change="onDownloadSettingChange">
-                <van-radio name="" shape="square">站点设置</van-radio>
-                <van-radio v-for="d in downloadSettings" :key="d.id" :name="d.id" shape="square">{{ d.name }}</van-radio>
-              </van-radio-group>
-            </template>
-          </van-field>
-          <van-field name="save_path" label="保存路径">
-            <template #input>
-              <van-radio-group v-model="form.save_path" direction="horizontal">
-                <van-radio name="" shape="square">自动</van-radio>
-                <van-radio v-for="p in savePaths" :key="p" :name="p" shape="square">{{ p }}</van-radio>
-              </van-radio-group>
+              <van-checkbox-group v-model="searchSitesSelected" direction="horizontal" class="site-checkboxes">
+                <van-checkbox v-for="s in searchSites" :key="s" :name="s" shape="square">{{ s }}</van-checkbox>
+              </van-checkbox-group>
             </template>
           </van-field>
 
           <div style="display:flex;gap:8px;margin-top:16px">
-            <van-button round block @click="activeStep = 'basic'">上一步</van-button>
-            <van-button round block type="primary" native-type="submit" :loading="submitting">
+            <van-button  block @click="activeStep = 'basic'">上一步</van-button>
+            <van-button  block type="primary" native-type="submit" :loading="submitting">
               {{ props.rssid ? '保存' : '添加' }}
             </van-button>
           </div>
@@ -246,3 +291,11 @@ async function submit(keepOpen = false) {
     </div>
   </van-popup>
 </template>
+
+<style scoped>
+.site-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+}
+</style>

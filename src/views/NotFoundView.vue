@@ -11,7 +11,7 @@ const router = useRouter()
       image="error"
       description="抱歉，页面不存在"
     >
-      <van-button round type="primary" size="small" @click="router.push('/index')">返回首页</van-button>
+      <van-button type="primary" size="small" @click="router.push('/index')">返回首页</van-button>
     </van-empty>
   </div>
 </template>

@@ -78,3 +78,9 @@ img {
     grid-template-columns: repeat(5, 1fr);
   }
 }
+
+.van-radio-group--horizontal,
+.van-checkbox-group--horizontal {
+  gap: 12px;
+  flex-wrap: wrap;
+}

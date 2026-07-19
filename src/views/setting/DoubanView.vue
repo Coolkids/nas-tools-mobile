@@ -86,7 +86,7 @@ async function onDeleteHistory(id: number) {
           <template #right-icon><van-icon name="delete" style="color:#ee0a24" /></template>
         </van-cell>
       </van-cell-group>
-      <div style="margin-top:16px"><van-button round block type="primary" native-type="submit" :loading="saving">保存设置</van-button></div>
+      <div style="margin-top:16px"><van-button block type="primary" native-type="submit" :loading="saving">保存设置</van-button></div>
     </van-form>
   </div>
 </template>
