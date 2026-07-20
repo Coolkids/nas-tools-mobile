@@ -25,7 +25,7 @@ const visible = computed({ get: () => props.modelValue, set: (v) => emit('update
 const downloadSettings = ref<DownloadSettingOption[]>([])
 const savePaths = ref<string[]>([])
 const form = reactive({ dl_setting: '' as string | number, dl_dir: '', magnets: '' })
-const uploadingNames: string[] = []
+const uploadingNames = ref<string[]>([])
 const submitting = ref(false)
 const activeTab = ref(props.manualType || 'torrent')
 
@@ -47,7 +47,7 @@ watch(() => props.modelValue, async (open) => {
   form.dl_setting = ''
   form.dl_dir = ''
   form.magnets = ''
-  uploadingNames.length = 0
+  uploadingNames.value = []
   activeTab.value = props.manualType || 'torrent'
   await fetchDownloadSettings()
   await fetchSavePaths('')
@@ -73,7 +73,7 @@ async function onUpload(file: File) {
   try {
     const res = await uploadTorrentFile(file)
     if (res.code === 0 && res.filepath) {
-      uploadingNames.push(file.name)
+      uploadingNames.value.push(file.name)
       showToast('上传成功')
     } else showToast(res.msg || '上传失败')
   } catch { showToast('上传失败') }
@@ -89,7 +89,7 @@ async function submit() {
       else emit('error', res.retmsg || '添加下载失败')
     } else {
       const magnets = activeTab.value === 'magnet' ? form.magnets.split('\n').map(m => m.trim()).filter(Boolean) : []
-      const files = activeTab.value === 'torrent' ? uploadingNames.map(n => ({ upload: { filename: n } })) : []
+      const files = activeTab.value === 'torrent' ? uploadingNames.value.map(n => ({ upload: { filename: n } })) : []
       if (files.length === 0 && magnets.length === 0) { emit('error', '请上传种子文件或填写磁力链接'); return }
       const res = await downloadTorrent({ files, magnets, dl_dir: form.dl_dir, dl_setting: form.dl_setting })
       if (res.code === 0) { visible.value = false; emit('success') }
@@ -100,34 +100,215 @@ async function submit() {
 </script>
 
 <template>
-  <van-popup v-model:show="visible" position="bottom"  :style="{ height: '70%' }" closeable :title="title || '添加下载'">
-    <div style="padding: 16px">
-      <van-form @submit="submit">
-        <van-field v-model="dlSettingText" is-link readonly name="dl_setting" label="下载设置" placeholder="请选择" @click="showDlSettingPicker = true" />
-        <van-popup v-model:show="showDlSettingPicker" position="bottom" >
-          <van-picker :columns="dlSettingColumns" @confirm="({ selectedOptions }: any) => { form.dl_setting = selectedOptions[0].value; showDlSettingPicker = false; onDownloadSettingChange(selectedOptions[0].value) }" @cancel="showDlSettingPicker = false" style="height: 300px" />
-        </van-popup>
+  <van-popup
+    v-model:show="visible"
+    position="bottom"
+    round
+    :style="{ height: mode === 'manual' ? '70%' : 'auto' }"
+    closeable
+    class="download-dialog"
+  >
+    <div class="dialog-container">
+      <div class="dialog-header">{{ title || '添加下载' }}</div>
 
-        <van-field v-model="dlDirText" is-link readonly name="dl_dir" label="保存目录" placeholder="请选择" @click="showDlDirPicker = true" />
-        <van-popup v-model:show="showDlDirPicker" position="bottom" >
-          <van-picker :columns="dlDirColumns" @confirm="({ selectedOptions }: any) => { form.dl_dir = selectedOptions[0].value; showDlDirPicker = false }" @cancel="showDlDirPicker = false" style="height: 300px" />
-        </van-popup>
+      <van-form class="dialog-form" @submit="submit">
+        <div class="form-body">
+          <div class="group-title">下载选项</div>
+          <van-cell-group inset>
+            <van-field v-model="dlSettingText" is-link readonly name="dl_setting" label="下载设置" placeholder="请选择" @click="showDlSettingPicker = true" />
+            <van-field v-model="dlDirText" is-link readonly name="dl_dir" label="保存目录" placeholder="请选择" @click="showDlDirPicker = true" />
+          </van-cell-group>
 
-        <template v-if="mode === 'manual'">
-          <van-tabs v-model:active="activeTab">
-            <van-tab name="torrent" title="种子文件">
-              <van-uploader :after-read="(r: any) => onUpload(r.file)" accept=".torrent" multiple />
-            </van-tab>
-            <van-tab name="magnet" title="磁力链接">
-              <van-field v-model="form.magnets" type="textarea" :rows="5" placeholder="magnet:?xt=urn:btih:xxx，换行添加多个" />
-            </van-tab>
-          </van-tabs>
-        </template>
+          <template v-if="mode === 'manual'">
+            <div class="group-title">下载方式</div>
+            <div class="segmented">
+              <div class="segmented-item" :class="{ 'segmented-item--active': activeTab === 'torrent' }" @click="activeTab = 'torrent'">种子文件</div>
+              <div class="segmented-item" :class="{ 'segmented-item--active': activeTab === 'magnet' }" @click="activeTab = 'magnet'">磁力链接</div>
+            </div>
 
-        <div style="margin-top: 16px">
-          <van-button  block type="primary" native-type="submit" :loading="submitting">下载</van-button>
+            <van-cell-group inset class="manual-group">
+              <div v-if="activeTab === 'torrent'" class="upload-area">
+                <van-uploader :after-read="(r: any) => onUpload(r.file)" accept=".torrent" multiple>
+                  <div class="upload-trigger">
+                    <van-icon name="plus" size="22" />
+                    <span class="upload-text">点击上传种子文件</span>
+                    <span class="upload-hint">支持 .torrent，可多选</span>
+                  </div>
+                </van-uploader>
+                <div v-if="uploadingNames.length" class="uploaded-list">
+                  <div v-for="n in uploadingNames" :key="n" class="uploaded-item">
+                    <van-icon name="description" class="uploaded-icon" />
+                    <span class="uploaded-name">{{ n }}</span>
+                  </div>
+                </div>
+              </div>
+              <van-field
+                v-else
+                v-model="form.magnets"
+                type="textarea"
+                :rows="5"
+                placeholder="magnet:?xt=urn:btih:xxx，换行添加多个"
+              />
+            </van-cell-group>
+          </template>
+        </div>
+
+        <div class="form-footer">
+          <van-button class="footer-btn" round type="primary" native-type="submit" :loading="submitting">下载</van-button>
         </div>
       </van-form>
     </div>
+
+    <van-popup v-model:show="showDlSettingPicker" position="bottom" round>
+      <van-picker :columns="dlSettingColumns" @confirm="({ selectedOptions }: any) => { form.dl_setting = selectedOptions[0].value; showDlSettingPicker = false; onDownloadSettingChange(selectedOptions[0].value) }" @cancel="showDlSettingPicker = false" />
+    </van-popup>
+    <van-popup v-model:show="showDlDirPicker" position="bottom" round>
+      <van-picker :columns="dlDirColumns" @confirm="({ selectedOptions }: any) => { form.dl_dir = selectedOptions[0].value; showDlDirPicker = false }" @cancel="showDlDirPicker = false" />
+    </van-popup>
   </van-popup>
 </template>
+
+<style scoped>
+.dialog-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #f7f8fa;
+}
+
+.dialog-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 48px;
+  padding: 0 44px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #323233;
+}
+
+.dialog-form {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.form-body {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 12px;
+}
+
+.group-title {
+  margin: 8px 24px 8px;
+  font-size: 13px;
+  color: #969799;
+}
+
+/* 下载方式分段选择器 */
+.segmented {
+  display: flex;
+  margin: 0 16px 12px;
+  padding: 3px;
+  background: #e8e9eb;
+  border-radius: 10px;
+}
+
+.segmented-item {
+  flex: 1;
+  padding: 7px 0;
+  text-align: center;
+  font-size: 14px;
+  color: #646566;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.segmented-item--active {
+  background: #fff;
+  color: var(--van-primary-color, #1989fa);
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+/* 上传区域 */
+.manual-group {
+  margin-top: 0;
+}
+
+.upload-area {
+  padding: 12px 16px;
+}
+
+.upload-area :deep(.van-uploader__wrapper) {
+  width: 100%;
+}
+
+.upload-trigger {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  padding: 24px 0;
+  border: 1px dashed #dcdee0;
+  border-radius: 8px;
+  background: #fafbfc;
+  color: #969799;
+}
+
+.upload-text {
+  font-size: 14px;
+  color: #646566;
+}
+
+.upload-hint {
+  font-size: 12px;
+}
+
+.uploaded-list {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.uploaded-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: #f2f3f5;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #646566;
+}
+
+.uploaded-icon {
+  flex-shrink: 0;
+  color: #969799;
+}
+
+.uploaded-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 底部按钮 */
+.form-footer {
+  flex-shrink: 0;
+  display: flex;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  background: #fff;
+  border-top: 1px solid #f2f3f5;
+}
+
+.footer-btn {
+  flex: 1;
+}
+</style>

@@ -136,8 +136,9 @@ const voteText = computed(() => {
   position: relative;
   aspect-ratio: 2 / 3;
   background-color: #f2f3f5;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   transition: transform 0.15s;
+  -webkit-tap-highlight-color: transparent;
 }
 .media-card:active {
   transform: scale(0.97);

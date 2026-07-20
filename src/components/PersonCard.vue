@@ -32,6 +32,7 @@ defineProps<{
   padding: 12px 8px;
   border-radius: 8px;
   background-color: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 .person-image-wrap {
   width: 64px;
