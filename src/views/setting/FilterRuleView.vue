@@ -115,7 +115,6 @@ async function load() {
     if (res.code === 0) {
       groups.value = res.ruleGroups || []
       initGroups.value = res.initRules || []
-      expandedGroups.value = new Set((res.ruleGroups || []).map(g => g.id))
     }
   } finally {
     loading.value = false
