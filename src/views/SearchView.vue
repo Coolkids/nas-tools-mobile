@@ -30,6 +30,7 @@ const hasResults = computed(() => resultItems.value.length > 0)
 
 interface FlatTorrent extends TorrentItem {
   groupRestype: string; groupRespix: string; season: string
+  encode: string; releaseGroup: string
 }
 
 function flattenSeason(item: SearchResultItem): Array<{ season: string; torrents: FlatTorrent[] }> {
@@ -38,7 +39,14 @@ function flattenSeason(item: SearchResultItem): Array<{ season: string; torrents
     for (const [, group] of Object.entries(seasonDict)) {
       for (const [, unique] of Object.entries(group.group_torrents)) {
         for (const t of unique.torrent_list) {
-          torrents.push({ ...t, groupRestype: group.group_info.restype, groupRespix: group.group_info.respix, season: seKey })
+          torrents.push({
+            ...t,
+            groupRestype: group.group_info.restype,
+            groupRespix: group.group_info.respix,
+            season: seKey,
+            encode: unique.unique_info.video_encode,
+            releaseGroup: unique.unique_info.releasegroup
+          })
         }
       }
     }
@@ -48,7 +56,7 @@ function flattenSeason(item: SearchResultItem): Array<{ season: string; torrents
 
 function freeText(t: TorrentItem): { text: string; type: string } | null {
   if (t.downloadvalue === 0) return { text: 'FREE', type: 'success' }
-  if (t.downloadvalue !== 1) return { text: `${Math.round(t.downloadvalue * 100)}%DL`, type: 'info' }
+  if (t.downloadvalue !== 1) return { text: `${Math.round(t.downloadvalue * 100)}%DL`, type: 'primary' }
   return null
 }
 
@@ -173,17 +181,20 @@ const spStates = [
 
 <template>
   <div class="search-view page">
-    <van-search
-      v-model="keyword"
-      placeholder="搜索资源..."
-      show-action
-      @search="doSearch"
-      @cancel="$router.push('/index')"
-    >
-      <template #action>
-        <div @click="showAdvanced = true">高级</div>
-      </template>
-    </van-search>
+    <div class="search-bar">
+      <van-search
+        v-model="keyword"
+        shape="round"
+        placeholder="搜索电影、电视剧资源..."
+        show-action
+        @search="doSearch"
+        @cancel="$router.push('/index')"
+      >
+        <template #action>
+          <div class="adv-link" @click="showAdvanced = true">高级</div>
+        </template>
+      </van-search>
+    </div>
 
     <div v-if="searching && !hasResults" class="loading-tip">
       <van-loading size="16" /> 正在搜索资源...
@@ -191,46 +202,73 @@ const spStates = [
 
     <van-empty v-else-if="!hasResults && !searching" description="输入想看的电影、电视剧名称，点击搜索试试看吧。" />
 
-    <div v-else class="result-list">
-      <div v-for="item in resultItems" :key="item.key" class="result-card">
-        <div class="result-head">
-          <img v-if="item.poster" :src="item.poster" class="result-poster"
-            @error="($event.target as HTMLImageElement).style.display = 'none'" />
-          <div class="result-info">
-            <div class="result-title-row">
-              <h3 class="result-title">{{ item.title }}</h3>
-              <van-tag v-if="item.exist" type="success">已存在</van-tag>
-            </div>
-            <div class="result-meta">
-              <van-tag v-if="item.type" size="small" plain>{{ item.type }}</van-tag>
-              <span v-if="item.vote && item.vote !== '0'" class="meta-text">评分 {{ item.vote }}</span>
-            </div>
-            <p v-if="item.overview" class="result-overview">{{ item.overview }}</p>
-          </div>
-        </div>
+    <template v-else>
+      <div class="result-summary">
+        <span>共 {{ total }} 个结果</span>
+        <span v-if="searching" class="summary-loading"><van-loading size="12" /> 搜索中...</span>
+      </div>
 
-        <div v-for="sec in flattenSeason(item)" :key="`${item.key}-${sec.season}`" class="season-block">
-          <div v-if="sec.season !== 'MOV'" class="season-title">{{ sec.season }}</div>
-          <van-cell
-            v-for="t in sec.torrents" :key="t.id"
-            :title="t.torrent_name"
-            :label="`${t.site} | ${t.size} | ${t.seeders || 0}↑`"
-            is-link
-            @click="openDownload(t)"
-          >
-            <template #extra>
-              <div class="torrent-badges">
-                <van-tag v-if="t.groupRestype" size="small" type="danger">{{ t.groupRestype }}</van-tag>
-                <van-tag v-if="t.groupRespix" size="small" type="warning">{{ t.groupRespix }}</van-tag>
+      <div class="result-list">
+        <div v-for="item in resultItems" :key="item.key" class="result-card">
+          <div class="result-head">
+            <div class="poster-wrap">
+              <img v-if="item.poster" :src="item.poster" class="result-poster"
+                @error="($event.target as HTMLImageElement).style.display = 'none'" />
+              <van-icon v-else name="tv-o" class="poster-placeholder" />
+            </div>
+            <div class="result-info">
+              <div class="result-title-row">
+                <h3 class="result-title">{{ item.title }}</h3>
+                <van-tag v-if="item.exist" type="success" round>已存在</van-tag>
+              </div>
+              <div class="result-meta">
+                <van-tag v-if="item.type" size="small" plain type="primary">{{ item.type }}</van-tag>
+                <span v-if="item.year" class="meta-item">{{ item.year }}</span>
+                <span v-if="item.vote && item.vote !== '0'" class="meta-item meta-vote">
+                  <van-icon name="star" />{{ item.vote }}
+                </span>
+              </div>
+              <p v-if="item.overview" class="result-overview">{{ item.overview }}</p>
+            </div>
+          </div>
+
+          <div class="torrent-section">
+            <template v-for="sec in flattenSeason(item)" :key="`${item.key}-${sec.season}`">
+              <div v-if="sec.season !== 'MOV'" class="season-title">
+                <span>{{ sec.season }}</span>
+                <span class="season-count">{{ sec.torrents.length }} 个资源</span>
+              </div>
+              <div class="torrent-list">
+                <div v-for="t in sec.torrents" :key="t.id" class="torrent-item" @click="openDownload(t)">
+                  <div class="torrent-main">
+                    <div class="torrent-name">{{ t.torrent_name }}</div>
+                    <div class="torrent-meta">
+                      <span v-if="t.site" class="meta-site">{{ t.site }}</span>
+                      <span v-if="t.releaseGroup" class="meta-group">{{ t.releaseGroup }}</span>
+                      <span v-if="t.size">{{ t.size }}</span>
+                      <span class="meta-seed"><van-icon name="arrow-up" />{{ t.seeders || 0 }}</span>
+                    </div>
+                    <div class="torrent-badges">
+                      <van-tag v-if="t.groupRestype" size="small" plain type="danger">{{ t.groupRestype }}</van-tag>
+                      <van-tag v-if="t.groupRespix" size="small" plain type="warning">{{ t.groupRespix }}</van-tag>
+                      <van-tag v-if="t.encode" size="small" plain type="primary">{{ t.encode }}</van-tag>
+                      <van-tag v-if="freeText(t)" size="small" :type="(freeText(t)!.type as any)">{{ freeText(t)!.text }}</van-tag>
+                      <van-tag v-if="uploadText(t)" size="small" type="warning">{{ uploadText(t)!.text }}</van-tag>
+                    </div>
+                  </div>
+                  <div class="torrent-action">
+                    <van-icon name="down" />
+                  </div>
+                </div>
               </div>
             </template>
-          </van-cell>
+          </div>
         </div>
       </div>
-    </div>
+    </template>
 
     <van-action-sheet v-model:show="showAdvanced" title="高级搜索">
-      <div style="padding: 16px">
+      <div class="adv-content">
         <van-form @submit="doAdvancedSearch">
           <van-field v-model="advancedForm.name" label="名称" placeholder="电影/电视剧名称" :rules="[{ required: true, message: '请输入名称' }]" />
           <van-field v-model="advancedForm.year" label="年份" placeholder="20xx" />
@@ -250,8 +288,8 @@ const spStates = [
               </van-radio-group>
             </template>
           </van-field>
-          <div style="padding: 16px">
-            <van-button block type="primary" native-type="submit">开始搜索</van-button>
+          <div class="adv-submit">
+            <van-button block round type="primary" native-type="submit">开始搜索</van-button>
           </div>
         </van-form>
       </div>
@@ -260,16 +298,275 @@ const spStates = [
 </template>
 
 <style scoped>
-.result-list { padding: 0 12px; }
-.result-card { margin-bottom: 12px; background: #fff; border-radius: 8px; overflow: hidden; }
-.result-head { display: flex; gap: 10px; padding: 10px; }
-.result-poster { width: 60px; height: 90px; object-fit: cover; border-radius: 4px; flex-shrink: 0; }
-.result-info { flex: 1; min-width: 0; }
-.result-title-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
-.result-title { margin: 0; font-size: 15px; font-weight: 600; }
-.result-meta { display: flex; gap: 8px; font-size: 12px; color: #969799; margin-bottom: 4px; }
-.meta-text { font-size: 12px; }
-.result-overview { margin: 0; font-size: 12px; color: #969799; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.season-title { font-weight: 600; font-size: 13px; padding: 4px 10px; background: #f7f8fa; border-left: 3px solid var(--van-primary-color); }
-.torrent-badges { display: flex; gap: 4px; }
+/* ========== 搜索栏（吸顶） ========== */
+.search-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(247, 248, 250, 0.92);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+.search-bar :deep(.van-search) {
+  background: transparent;
+  padding: 8px 12px;
+}
+.adv-link {
+  color: var(--van-primary-color);
+  font-size: 14px;
+}
+
+/* ========== 结果统计 ========== */
+.result-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  font-size: 12px;
+  color: #969799;
+}
+.summary-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--van-primary-color);
+}
+
+/* ========== 结果网格：手机1列 / 手机横屏·平板2列 / 大屏3列 ========== */
+.result-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr));
+  gap: 12px;
+  padding: 0 12px 12px;
+  align-items: start;
+}
+
+.result-card {
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+/* ========== 卡片头部 ========== */
+.result-head {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+}
+.poster-wrap {
+  flex-shrink: 0;
+  width: 72px;
+  height: 102px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #f2f3f5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+.result-poster {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.poster-placeholder {
+  font-size: 26px;
+  color: #c8c9cc;
+}
+.result-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.result-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.result-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #323233;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.result-title-row .van-tag {
+  flex-shrink: 0;
+}
+.result-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #969799;
+}
+.meta-vote {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: #ff976a;
+  font-weight: 500;
+}
+.result-overview {
+  margin: 0;
+  font-size: 12px;
+  color: #969799;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ========== 季/资源区 ========== */
+.torrent-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 12px 12px;
+}
+.season-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #646566;
+  background: #f7f8fa;
+  border-left: 3px solid var(--van-primary-color);
+  border-radius: 4px;
+}
+.season-count {
+  font-weight: 400;
+  color: #969799;
+}
+.torrent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ========== 种子条目 ========== */
+.torrent-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #f7f8fa;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+.torrent-item:active {
+  background: #e8f0fd;
+}
+.torrent-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.torrent-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #323233;
+  line-height: 1.4;
+  word-break: break-all;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.torrent-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 11px;
+  color: #969799;
+}
+.meta-site {
+  color: var(--van-primary-color);
+  font-weight: 500;
+}
+.meta-group {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.meta-seed {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  color: #07c160;
+  font-weight: 500;
+}
+.meta-seed .van-icon {
+  font-size: 11px;
+}
+.torrent-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.torrent-action {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(25, 137, 250, 0.1);
+  color: var(--van-primary-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+}
+
+/* ========== 高级搜索 ========== */
+.adv-content {
+  padding: 8px 16px 24px;
+  max-width: 640px;
+  margin: 0 auto;
+}
+.adv-submit {
+  padding: 16px;
+}
+
+/* ========== 平板及以上 ========== */
+@media (min-width: 768px) {
+  .result-list {
+    gap: 14px;
+    padding: 0 16px 16px;
+  }
+  .result-summary {
+    padding: 10px 20px;
+    font-size: 13px;
+  }
+  .poster-wrap {
+    width: 82px;
+    height: 116px;
+  }
+  .result-title {
+    font-size: 16px;
+  }
+  .result-head {
+    padding: 14px;
+  }
+  .torrent-section {
+    padding: 0 14px 14px;
+  }
+}
 </style>
