@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
-import { showToast } from 'vant'
 import {
   search, getSearchTaskList, getSearchTaskResult, searchTaskDelete,
   type SearchTaskItem, type SearchTaskResultItem, type TaskTmdbInfo
@@ -26,6 +25,7 @@ const tmdbInfo = ref<TaskTmdbInfo | null>(null)
 const siteFilter = ref<string[]>([])
 const nameFilter = ref('')
 const showResults = ref(false)
+const showSiteFilter = ref(false)
 
 let taskPollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -134,6 +134,7 @@ async function loadTaskResult(kw: string) {
     }
   } catch { }
   loadingResults.value = false
+  recalcTable()
 }
 
 function startTaskPoll() {
@@ -161,6 +162,32 @@ function uploadText(t: SearchTaskResultItem): { text: string; color: string } | 
 
 function openPage(url: string) {
   if (url) window.open(url, '_blank')
+}
+
+// ---- Results table ----
+const vxeTableRef = ref()
+const resultsMainRef = ref<HTMLElement>()
+const tableHeight = ref(300)
+
+function recalcTable() {
+  nextTick(() => {
+    const main = resultsMainRef.value
+    if (!main) return
+    const filterBar = main.querySelector('.filter-bar') as HTMLElement | null
+    const used = filterBar ? filterBar.offsetHeight + 8 : 0
+    tableHeight.value = Math.max(200, main.clientHeight - used)
+    vxeTableRef.value?.recalculate()
+  })
+}
+
+function onWindowResize() {
+  if (showResults.value) recalcTable()
+}
+
+function toggleSite(s: string) {
+  const idx = siteFilter.value.indexOf(s)
+  if (idx >= 0) siteFilter.value.splice(idx, 1)
+  else siteFilter.value.push(s)
 }
 
 // ---- Download ----
@@ -348,9 +375,13 @@ async function doAdvancedSearch() {
 onMounted(() => {
   fetchTaskList()
   startTaskPoll()
+  window.addEventListener('resize', onWindowResize)
   if (keyword.value) doSearch()
 })
-onBeforeUnmount(stopTaskPoll)
+onBeforeUnmount(() => {
+  stopTaskPoll()
+  window.removeEventListener('resize', onWindowResize)
+})
 </script>
 
 <template>
@@ -431,76 +462,134 @@ onBeforeUnmount(stopTaskPoll)
       v-model:show="showResults"
       position="right"
       :style="{ width: '100%', height: '100%' }"
-      closeable
-      close-icon-position="top-left"
-      :title="selectedTask ? `搜索结果：${selectedTask.keyword}` : '搜索结果'"
+      @opened="recalcTable"
     >
       <div class="results-popup">
+        <div class="popup-header">
+          <div class="popup-back" @click="showResults = false">
+            <van-icon name="arrow-left" />
+          </div>
+          <div class="popup-title">{{ selectedTask ? `搜索结果：${selectedTask.keyword}` : '搜索结果' }}</div>
+          <div v-if="taskResults.length > 0" class="popup-count">{{ filteredResults.length }} 条</div>
+        </div>
+
         <div v-if="loadingResults" class="loading-tip">
           <van-loading size="16" /> 加载中...
         </div>
 
         <template v-else-if="taskResults.length > 0">
-          <div v-if="tmdbInfo" class="tmdb-panel">
-            <img v-if="tmdbInfo.poster" :src="tmdbInfo.poster" class="tmdb-poster" alt="poster">
-            <div class="tmdb-meta">
-              <div class="tmdb-title">
-                {{ tmdbInfo.title }}
-                <span v-if="tmdbInfo.year" class="tmdb-year">({{ tmdbInfo.year }})</span>
+          <div class="results-body">
+            <div v-if="tmdbInfo" class="tmdb-panel">
+              <img v-if="tmdbInfo.poster" :src="tmdbInfo.poster" class="tmdb-poster" alt="poster">
+              <div class="tmdb-meta">
+                <div class="tmdb-title">
+                  {{ tmdbInfo.title }}
+                  <span v-if="tmdbInfo.year" class="tmdb-year">({{ tmdbInfo.year }})</span>
+                </div>
+                <div v-if="tmdbInfo.overview" class="tmdb-overview">{{ tmdbInfo.overview }}</div>
               </div>
-              <div v-if="tmdbInfo.overview" class="tmdb-overview">{{ tmdbInfo.overview }}</div>
             </div>
-          </div>
 
-          <div class="filter-bar">
-            <van-field
-              v-model="nameFilter"
-              placeholder="名称过滤..."
-              clearable
-              size="small"
-            />
-            <van-dropdown-menu>
-              <van-dropdown-item
-                v-model="siteFilter"
-                :options="uniqueSites.map(s => ({ text: s, value: s }))"
-                multiple
+            <div ref="resultsMainRef" class="results-main">
+              <div class="filter-bar">
+                <van-field
+                  v-model="nameFilter"
+                  placeholder="名称过滤..."
+                  clearable
+                  class="filter-input"
+                />
+                <van-button
+                  size="small"
+                  :type="siteFilter.length > 0 ? 'primary' : 'default'"
+                  plain
+                  class="filter-site-btn"
+                  @click="showSiteFilter = true"
+                >
+                  {{ siteFilter.length > 0 ? `站点(${siteFilter.length})` : '站点筛选' }}
+                </van-button>
+              </div>
+
+              <vxe-table
+                ref="vxeTableRef"
+                :data="filteredResults"
+                :height="tableHeight"
+                border
+                stripe
+                size="small"
+                class="results-table"
+                :scroll-y="{ enabled: true, gt: 20 }"
+                :row-config="{ height: 72, isHover: false }"
               >
-                <template #title>
-                  <span v-if="siteFilter.length === 0">站点筛选</span>
-                  <span v-else>已选 {{ siteFilter.length }}</span>
+                <vxe-column field="site" title="站点" width="60">
+                  <template #default="{ row }">
+                    <span class="site-cell">{{ row.site }}</span>
+                  </template>
+                </vxe-column>
+                <vxe-column field="torrent_name" title="种子名称" min-width="160">
+                  <template #default="{ row }">
+                    <div class="cell-name">{{ row.torrent_name }}</div>
+                    <div class="cell-badges">
+                      <van-tag v-if="row.title" size="small" type="primary">{{ row.title }}</van-tag>
+                      <van-tag v-if="row.type === 'MOV'" size="small" type="success">电影</van-tag>
+                      <van-tag v-else-if="row.type === 'TV'" size="small" type="warning">电视剧</van-tag>
+                      <van-tag v-if="row.size" size="small" plain>{{ row.size }}</van-tag>
+                      <van-tag v-if="uploadText(row)" size="small" :color="uploadText(row)!.color">{{ uploadText(row)!.text }}</van-tag>
+                      <van-tag v-if="freeText(row)" size="small" :color="freeText(row)!.color">{{ freeText(row)!.text }}</van-tag>
+                    </div>
+                  </template>
+                </vxe-column>
+                <vxe-column field="seeders" title="做种" width="52" align="center">
+                  <template #default="{ row }">
+                    <span v-if="row.seeders" class="seeders-cell">{{ row.seeders }}</span>
+                    <span v-else>-</span>
+                  </template>
+                </vxe-column>
+                <vxe-column title="操作" width="62" align="center">
+                  <template #default="{ row }">
+                    <div class="cell-actions">
+                      <van-button size="mini" type="primary" @click.stop="openDownload(row)">下载</van-button>
+                      <van-icon v-if="row.pageurl" name="link-o" class="action-link" @click.stop="openPage(row.pageurl)" />
+                    </div>
+                  </template>
+                </vxe-column>
+                <template #empty>
+                  <van-empty description="无匹配结果" image-size="60" />
                 </template>
-              </van-dropdown-item>
-            </van-dropdown-menu>
-            <span class="filter-count">{{ filteredResults.length }} 条</span>
-          </div>
-
-          <div class="result-grid">
-            <div v-for="r in filteredResults" :key="r.id" class="result-row">
-              <div class="result-row-site">{{ r.site }}</div>
-              <div class="result-row-body">
-                <div class="result-row-name">{{ r.torrent_name }}</div>
-                <div v-if="r.description" class="result-row-desc">{{ r.description }}</div>
-                <div class="result-row-badges">
-                  <van-tag v-if="r.title" size="small" type="primary">{{ r.title }}</van-tag>
-                  <van-tag v-if="r.type === 'MOV'" size="small" type="success">电影</van-tag>
-                  <van-tag v-else-if="r.type === 'TV'" size="small" type="warning">电视剧</van-tag>
-                  <van-tag v-if="r.size" size="small" plain>{{ r.size }}</van-tag>
-                  <van-tag v-if="uploadText(r)" size="small" :color="uploadText(r)!.color">{{ uploadText(r)!.text }}</van-tag>
-                  <van-tag v-if="freeText(r)" size="small" :color="freeText(r)!.color">{{ freeText(r)!.text }}</van-tag>
-                </div>
-                <div class="result-row-meta">
-                  <span v-if="r.seeders" class="meta-seed">做种 {{ r.seeders }}</span>
-                  <span v-if="r.pageurl" class="meta-link" @click.stop="openPage(r.pageurl)">详情</span>
-                </div>
-              </div>
-              <div class="result-row-action" @click.stop="openDownload(r)">
-                <van-icon name="down" />
-              </div>
+              </vxe-table>
             </div>
           </div>
         </template>
 
         <van-empty v-else-if="!loadingResults" description="暂无搜索结果" />
+      </div>
+    </van-popup>
+
+    <!-- Site Filter Popup -->
+    <van-popup v-model:show="showSiteFilter" position="bottom" round :style="{ maxHeight: '60%' }">
+      <div class="site-filter">
+        <div class="site-filter-header">
+          <span class="site-filter-title">站点筛选</span>
+          <div class="site-filter-btns">
+            <van-button size="small" plain @click="siteFilter = []">清空</van-button>
+            <van-button size="small" type="primary" @click="showSiteFilter = false">确定</van-button>
+          </div>
+        </div>
+        <div class="site-filter-list">
+          <van-checkbox-group v-model="siteFilter">
+            <van-cell
+              v-for="s in uniqueSites"
+              :key="s"
+              clickable
+              :title="s"
+              @click="toggleSite(s)"
+            >
+              <template #right-icon>
+                <van-checkbox :name="s" @click.stop />
+              </template>
+            </van-cell>
+          </van-checkbox-group>
+          <van-empty v-if="uniqueSites.length === 0" description="暂无站点" image-size="60" />
+        </div>
       </div>
     </van-popup>
 
@@ -760,37 +849,101 @@ onBeforeUnmount(stopTaskPoll)
   padding-top: 4px;
 }
 
-/* Results Popup */
+/* ========== Results Popup ========== */
 .results-popup {
-  padding: 16px;
   height: 100%;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
+  overflow: hidden;
+  background: #fff;
+}
+
+.popup-header {
+  flex-shrink: 0;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px 0 4px;
+  border-bottom: 1px solid #ebedf0;
+  background: #fff;
+}
+
+.popup-back {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: #323233;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.popup-back:active {
+  opacity: 0.6;
+}
+
+.popup-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #323233;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.popup-count {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: #969799;
+  padding-right: 4px;
 }
 
 .loading-tip {
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 40px 0;
   color: #969799;
 }
 
+.results-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.results-main {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  gap: 8px;
+}
+
+/* TMDB 信息面板 */
 .tmdb-panel {
   display: flex;
   gap: 12px;
   padding: 12px;
   background: #f7f8fa;
   border-radius: 10px;
-  margin-bottom: 12px;
+  margin: 12px 12px 0;
   flex-shrink: 0;
 }
 
 .tmdb-poster {
-  width: 80px;
-  min-height: 110px;
+  width: 72px;
+  height: 102px;
   border-radius: 6px;
   object-fit: cover;
   flex-shrink: 0;
@@ -826,60 +979,41 @@ onBeforeUnmount(stopTaskPoll)
   overflow: hidden;
 }
 
+/* 筛选栏 */
 .filter-bar {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
-  margin-bottom: 12px;
 }
 
-.filter-bar :deep(.van-field) {
-  flex: 1;
-  padding: 4px 8px;
-}
-
-.filter-count {
-  font-size: 12px;
-  color: #969799;
-  white-space: nowrap;
-}
-
-.result-grid {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  overflow-y: auto;
-}
-
-.result-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 10px 12px;
-  background: #f7f8fa;
-  border-radius: 10px;
-}
-
-.result-row-site {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--van-primary-color);
-  white-space: nowrap;
-  min-width: 40px;
-  padding-top: 1px;
-}
-
-.result-row-body {
+.filter-bar :deep(.filter-input) {
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  padding: 5px 10px;
+  background: #f7f8fa;
+  border-radius: 6px;
 }
 
-.result-row-name {
+.filter-site-btn {
+  flex-shrink: 0;
+}
+
+/* 结果表格 */
+.results-table {
+  width: 100%;
+}
+
+.site-cell {
+  display: block;
+  font-weight: 600;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cell-name {
   font-size: 13px;
   font-weight: 500;
   color: #323233;
@@ -891,49 +1025,62 @@ onBeforeUnmount(stopTaskPoll)
   overflow: hidden;
 }
 
-.result-row-desc {
-  font-size: 11px;
-  color: #969799;
-  line-height: 1.4;
-}
-
-.result-row-badges {
+.cell-badges {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 4px;
+  margin-top: 4px;
+  overflow: hidden;
 }
 
-.result-row-meta {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 11px;
-  color: #969799;
-}
-
-.meta-seed {
+.seeders-cell {
   color: #07c160;
   font-weight: 500;
 }
 
-.meta-link {
+.cell-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.action-link {
+  font-size: 16px;
   color: var(--van-primary-color);
   cursor: pointer;
 }
 
-.result-row-action {
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: rgba(25, 137, 250, 0.1);
-  color: var(--van-primary-color);
+/* 站点筛选弹层 */
+.site-filter {
+  display: flex;
+  flex-direction: column;
+  max-height: 60vh;
+}
+
+.site-filter-header {
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  cursor: pointer;
-  margin-top: 2px;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid #ebedf0;
+  flex-shrink: 0;
+}
+
+.site-filter-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #323233;
+}
+
+.site-filter-btns {
+  display: flex;
+  gap: 8px;
+}
+
+.site-filter-list {
+  flex: 1;
+  overflow-y: auto;
 }
 
 /* Sheets */
@@ -945,5 +1092,62 @@ onBeforeUnmount(stopTaskPoll)
 
 .sheet-submit {
   padding: 16px;
+}
+
+/* ========== 横屏：左右布局 ========== */
+@media (orientation: landscape) and (min-width: 600px) {
+  .results-body {
+    flex-direction: row;
+    padding: 12px;
+    gap: 12px;
+  }
+  .tmdb-panel {
+    width: 220px;
+    flex-direction: column;
+    margin: 0;
+    overflow-y: auto;
+    align-self: stretch;
+  }
+  .tmdb-poster {
+    width: 100%;
+    height: auto;
+    max-height: 42vh;
+    object-fit: cover;
+  }
+  .tmdb-overview {
+    -webkit-line-clamp: unset;
+    overflow: visible;
+  }
+  .results-main {
+    padding: 0;
+  }
+}
+
+/* 横屏低高度（手机横屏）：收窄左侧面板 */
+@media (orientation: landscape) and (max-height: 500px) {
+  .tmdb-panel {
+    width: 170px;
+  }
+}
+
+/* 横屏高分辨率（平板/桌面）：加宽左侧面板 */
+@media (orientation: landscape) and (min-width: 960px) {
+  .tmdb-panel {
+    width: 300px;
+  }
+  .cell-name {
+    -webkit-line-clamp: 1;
+  }
+}
+
+/* 竖屏平板 */
+@media (orientation: portrait) and (min-width: 768px) {
+  .tmdb-poster {
+    width: 90px;
+    height: 128px;
+  }
+  .tmdb-title {
+    font-size: 16px;
+  }
 }
 </style>
