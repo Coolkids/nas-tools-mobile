@@ -111,7 +111,7 @@ function onCardClick(item: RssMediaItem) {
 <style scoped>
 .card-list { padding: 0 12px 12px; display: flex; flex-direction: column; gap: 10px; }
 .rss-card { border-radius: 8px; overflow: hidden; }
-.card-bg { position: relative; height: 160px; overflow: hidden; display: flex; }
+.card-bg { position: relative; z-index: 0; height: 160px; overflow: hidden; display: flex; }
 .bg-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; }
 .card-overlay { position: absolute; inset: 0; backg: rgba(0,0,0,0.5); backdrop-filter: blur(6px); z-index: 1; }
 .card-content { position: relative; z-index: 2; flex: 1; padding: 12px; display: flex; gap: 12px; }
