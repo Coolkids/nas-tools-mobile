@@ -8,7 +8,7 @@ import {
 import { useModalStore } from '@/stores/modal'
 import { doAction } from '@/api/request'
 import { getDownloadSettings, getDownloadDirs, downloadSearchItem, type DownloadSettingOption } from '@/api/download'
-import { addRssMedia } from '@/api/rss'
+import AddRssMediaDialog from '@/components/AddRssMediaDialog.vue'
 
 const route = useRoute()
 const modal = useModalStore()
@@ -252,8 +252,7 @@ async function submitDownload() {
 
 // ---- RSS Subscribe ----
 const showRss = ref(false)
-const rssForm = reactive({ name: '', keyword: '', season: '' })
-const rssSubmitting = ref(false)
+const rssTask = ref<SearchTaskItem | null>(null)
 const seasonOptions = computed(() => {
   const options = [{ value: '', label: '全部' }]
   for (let i = 1; i <= 20; i++) {
@@ -263,33 +262,8 @@ const seasonOptions = computed(() => {
 })
 
 function openRssSubscribe(task: SearchTaskItem) {
-  rssForm.name = task.keyword
-  rssForm.keyword = task.keyword
-  rssForm.season = ''
+  rssTask.value = task
   showRss.value = true
-}
-
-async function submitRss() {
-  if (!rssForm.name) { modal.warning('请输入标题'); return }
-  rssSubmitting.value = true
-  try {
-    const res = await addRssMedia({
-      type: 'MOV',
-      name: rssForm.name,
-      keyword: rssForm.keyword,
-      season: rssForm.season || undefined
-    })
-    if (res.code === 0) {
-      modal.success('添加订阅成功')
-      showRss.value = false
-    } else {
-      modal.error(res.msg || '添加订阅失败')
-    }
-  } catch (e) {
-    modal.error(e instanceof Error ? e.message : '添加订阅失败')
-  } finally {
-    rssSubmitting.value = false
-  }
 }
 
 // ---- Advanced Search ----
@@ -640,39 +614,11 @@ onBeforeUnmount(() => {
       </div>
     </van-action-sheet>
 
-    <!-- RSS Subscribe Sheet -->
-    <van-action-sheet v-model:show="showRss" title="订阅" closeable>
-      <div class="sheet-content">
-        <van-form @submit="submitRss">
-          <van-field
-            v-model="rssForm.name"
-            label="标题"
-            placeholder="标题"
-            :rules="[{ required: true, message: '请输入标题' }]"
-          />
-          <van-field
-            v-model="rssForm.keyword"
-            label="搜索词"
-            placeholder="留空使用标题"
-          />
-          <van-field name="season" label="季">
-            <template #input>
-              <van-radio-group v-model="rssForm.season" direction="horizontal">
-                <van-radio name="" shape="square">全部</van-radio>
-                <van-radio v-for="opt in seasonOptions" v-show="opt.value" :key="opt.value" :name="opt.value" shape="square">
-                  {{ opt.label }}
-                </van-radio>
-              </van-radio-group>
-            </template>
-          </van-field>
-          <div class="sheet-submit">
-            <van-button block round type="primary" native-type="submit" :loading="rssSubmitting">
-              添加订阅
-            </van-button>
-          </div>
-        </van-form>
-      </div>
-    </van-action-sheet>
+    <AddRssMediaDialog
+      v-model="showRss"
+      :initial-name="rssTask?.keyword"
+      :initial-keyword="rssTask?.keyword"
+    />
 
     <!-- Advanced Search Sheet -->
     <van-action-sheet v-model:show="showAdvanced" title="高级搜索" closeable>

@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Icon } from 'vant'
+import { Icon, showToast, showConfirmDialog } from 'vant'
+import AddRssMediaDialog from './AddRssMediaDialog.vue'
+import { removeRssMedia } from '@/api/rss'
 
 const props = defineProps<{
   tmdbId?: string | number
@@ -22,6 +24,7 @@ const props = defineProps<{
 const emit = defineEmits<{ (e: 'fav-change', fav: string): void }>()
 
 const router = useRouter()
+const rssDialogVisible = ref(false)
 
 function goDetail() {
   if (props.tmdbId && props.mediaType) {
@@ -29,9 +32,39 @@ function goDetail() {
   }
 }
 
-function onLoveClick() {
-  const next = props.fav === '1' ? '0' : '1'
-  emit('fav-change', next)
+async function onLoveClick() {
+  if (!props.title || !props.tmdbId) return
+
+  if (props.fav === '1') {
+    const ok = await showConfirmDialog({
+      title: '取消订阅',
+      message: `是否确定将 ${props.title} 从订阅中移除？`
+    }).catch(() => false)
+    if (!ok) return
+    try {
+      const res = await removeRssMedia({
+        name: props.title,
+        type: props.mediaType === 'TV' ? 'TV' : 'MOV',
+        year: props.year,
+        tmdbid: props.tmdbId
+      })
+      if (res.code === 0) {
+        emit('fav-change', '0')
+        showToast('已取消订阅')
+      } else {
+        showToast(res.msg || '取消订阅失败')
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : '取消订阅失败')
+    }
+  } else {
+    rssDialogVisible.value = true
+  }
+}
+
+function onRssSuccess() {
+  emit('fav-change', '1')
+  rssDialogVisible.value = false
 }
 
 const voteText = computed(() => {
@@ -84,6 +117,15 @@ const voteText = computed(() => {
       </div>
     </div>
   </div>
+
+  <AddRssMediaDialog
+    v-model="rssDialogVisible"
+    :type="mediaType === 'TV' ? 'TV' : 'MOV'"
+    :initial-name="title"
+    :initial-year="year"
+    :initial-keyword="title"
+    @success="onRssSuccess"
+  />
 </template>
 
 <style scoped>

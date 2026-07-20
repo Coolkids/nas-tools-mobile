@@ -8,8 +8,11 @@ import { doAction } from '@/api/request'
 
 const props = defineProps<{
   modelValue: boolean
-  type: 'MOV' | 'TV'
+  type?: 'MOV' | 'TV'
   rssid?: string | number
+  initialName?: string
+  initialYear?: string
+  initialKeyword?: string
 }>()
 
 const emit = defineEmits<{
@@ -57,10 +60,13 @@ const downloadSettingText = computed(() => {
 const savePathText = computed(() => form.save_path || '自动')
 
 const form = reactive({
+  type: '' as 'MOV' | 'TV' | '',
   name: '', year: '', keyword: '', season: '', fuzzy_match: false, over_edition: false,
   total_ep: '', current_ep: '', filter_restype: '', filter_pix: '', filter_team: '',
   filter_rule: '' as string | number, download_setting: '' as string | number, save_path: ''
 })
+
+const effectiveType = computed(() => form.type || props.type)
 
 const rssSites = ref<string[]>([])
 const searchSites = ref<string[]>([])
@@ -72,14 +78,20 @@ const ruleGroups = ref<Array<{ id: number | string; name: string }>>([])
 const submitting = ref(false)
 const activeStep = ref('basic')
 
-const storageKey = computed(() => props.type === 'MOV' ? 'RssSettingMOV' : 'RssSettingTV')
+const storageKey = computed(() => effectiveType.value === 'MOV' ? 'RssSettingMOV' : 'RssSettingTV')
 
 watch(() => props.modelValue, async (open) => {
   if (!open) return
   resetForm()
+  form.type = props.type || ''
   await loadOptions()
   if (props.rssid) await loadEditDetail()
-  else await loadSaved()
+  else {
+    await loadSaved()
+    if (props.initialName) form.name = props.initialName
+    if (props.initialKeyword) form.keyword = props.initialKeyword
+    if (props.initialYear) form.year = props.initialYear
+  }
 })
 
 async function loadEditDetail() {
@@ -104,7 +116,7 @@ async function loadEditDetail() {
 
 function resetForm() {
   Object.assign(form, {
-    name: '', year: '', keyword: '', season: '', fuzzy_match: false, over_edition: false,
+    type: '', name: '', year: '', keyword: '', season: '', fuzzy_match: false, over_edition: false,
     total_ep: '', current_ep: '', filter_restype: '', filter_pix: '', filter_team: '',
     filter_rule: '', download_setting: '', save_path: ''
   })
@@ -155,11 +167,12 @@ async function onDownloadSettingChange(val: string | number) {
 }
 
 async function submit(keepOpen = false) {
-  if (!form.name) { emit('error', '请输入标题'); return }
-  if (form.year && isNaN(Number(form.year))) { emit('error', '年份需为数字'); return }
-  if (!form.fuzzy_match && !form.season && props.type === 'TV') { emit('error', '请选择季'); return }
-  if (form.total_ep && isNaN(Number(form.total_ep))) { emit('error', '总集数需为数字'); return }
-  if (form.current_ep && isNaN(Number(form.current_ep))) { emit('error', '开始订阅集数需为数字'); return }
+  if (!form.name) { showToast('请输入标题'); return }
+  if (!effectiveType.value) { showToast('请选择类型'); return }
+  if (form.year && isNaN(Number(form.year))) { showToast('年份需为数字'); return }
+  if (!form.fuzzy_match && !form.season && effectiveType.value === 'TV') { showToast('请选择季'); return }
+  if (form.total_ep && isNaN(Number(form.total_ep))) { showToast('总集数需为数字'); return }
+  if (form.current_ep && isNaN(Number(form.current_ep))) { showToast('开始订阅集数需为数字'); return }
 
   const allRss = rssSitesSelected.value.length === rssSites.value.length || !rssSitesSelected.value.length
   const allSearch = searchSitesSelected.value.length === searchSites.value.length || !searchSitesSelected.value.length
@@ -171,21 +184,21 @@ async function submit(keepOpen = false) {
   }))
 
   const params: AddRssMediaParams = {
-    type: props.type, name: form.name, year: form.year, keyword: form.keyword, season: form.season,
+    type: effectiveType.value, name: form.name, year: form.year, keyword: form.keyword, season: form.season,
     fuzzy_match: form.fuzzy_match, over_edition: form.over_edition,
     rss_sites: allRss ? [] : rssSitesSelected.value, search_sites: form.fuzzy_match ? [] : allSearch ? [] : searchSitesSelected.value,
     filter_restype: form.filter_restype, filter_pix: form.filter_pix, filter_team: form.filter_team,
     filter_rule: form.filter_rule, save_path: form.save_path, download_setting: form.download_setting
   }
   if (props.rssid) params.rssid = props.rssid
-  if (props.type === 'TV') { params.total_ep = form.total_ep; params.current_ep = form.current_ep }
+  if (effectiveType.value === 'TV') { params.total_ep = form.total_ep; params.current_ep = form.current_ep }
 
   submitting.value = true
   try {
     const res = await addRssMedia(params)
     if (res.code === 0) { emit('success'); if (!keepOpen) visible.value = false; else resetForm() }
-    else emit('error', res.msg || '添加订阅失败')
-  } catch (e) { emit('error', e instanceof Error ? e.message : '添加订阅失败') }
+    else showToast(res.msg || '添加订阅失败')
+  } catch (e) { showToast(e instanceof Error ? e.message : '添加订阅失败') }
   finally { submitting.value = false }
 }
 </script>
@@ -201,11 +214,19 @@ async function submit(keepOpen = false) {
 
       <template v-if="activeStep === 'basic'">
         <van-form @submit="activeStep = 'setting'" style="margin-top: 12px">
+          <van-field name="type" label="类型">
+            <template #input>
+              <van-radio-group v-model="form.type" direction="horizontal">
+                <van-radio name="MOV" shape="square">电影</van-radio>
+                <van-radio name="TV" shape="square">电视剧</van-radio>
+              </van-radio-group>
+            </template>
+          </van-field>
           <van-field v-model="form.name" label="标题" placeholder="请输入标题" :rules="[{ required: true, message: '请输入标题' }]" />
           <van-field v-model="form.year" label="年份" placeholder="年份" />
           <van-field v-model="form.keyword" label="搜索词" placeholder="留空使用TMDB数据" />
           <van-field
-            v-if="type === 'TV'"
+            v-if="effectiveType === 'TV'"
             v-model="seasonText"
             is-link
             readonly
@@ -223,8 +244,8 @@ async function submit(keepOpen = false) {
               style="height: 300px"
             />
           </van-popup>
-          <van-field v-if="type === 'TV'" v-model="form.total_ep" label="总集数" placeholder="留空使用TMDB数据" />
-          <van-field v-if="type === 'TV'" v-model="form.current_ep" label="开始集数" placeholder="开始订阅集数" />
+          <van-field v-if="effectiveType === 'TV'" v-model="form.total_ep" label="总集数" placeholder="留空使用TMDB数据" />
+          <van-field v-if="effectiveType === 'TV'" v-model="form.current_ep" label="开始集数" placeholder="开始订阅集数" />
           <van-field name="fuzzy_match" label="模糊匹配">
             <template #input><van-switch v-model="form.fuzzy_match" /></template>
           </van-field>

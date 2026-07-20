@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { showToast, showLoadingToast, closeToast } from 'vant'
+import { showToast, showLoadingToast, closeToast, showConfirmDialog } from 'vant'
 import MediaCard from '@/components/MediaCard.vue'
 import PersonCard from '@/components/PersonCard.vue'
+import AddRssMediaDialog from '@/components/AddRssMediaDialog.vue'
+import { removeRssMedia } from '@/api/rss'
 import {
   mediaDetail,
   mediaRecommendations,
@@ -22,6 +24,7 @@ const recommendations = ref<RecommendItem[]>([])
 const persons = ref<PersonItem[]>([])
 const loading = ref(false)
 const errMsg = ref('')
+const rssDialogVisible = ref(false)
 
 async function loadAll() {
   const type = (route.query.type as string) || 'movie'
@@ -59,11 +62,41 @@ async function loadAll() {
   }
 }
 
-function onToggleFav() {
+async function onToggleFav() {
   if (!media.value) return
-  const next = media.value.fav === '1' ? '0' : '1'
-  media.value.fav = next
-  showToast(next === '1' ? '已加入订阅' : '已取消订阅')
+
+  if (media.value.fav === '1') {
+    const ok = await showConfirmDialog({
+      title: '取消订阅',
+      message: `是否确定将 ${media.value.title} 从订阅中移除？`
+    }).catch(() => false)
+    if (!ok) return
+    try {
+      const mediaType = (route.query.type as string) || 'MOV'
+      const res = await removeRssMedia({
+        name: media.value.title,
+        type: mediaType === 'TV' ? 'TV' : 'MOV',
+        year: media.value.year,
+        tmdbid: media.value.tmdbid
+      })
+      if (res.code === 0) {
+        media.value.fav = '0'
+        showToast('已取消订阅')
+      } else {
+        showToast(res.msg || '取消订阅失败')
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : '取消订阅失败')
+    }
+  } else {
+    rssDialogVisible.value = true
+  }
+}
+
+function onRssSuccess() {
+  if (!media.value) return
+  media.value.fav = '1'
+  rssDialogVisible.value = false
 }
 
 function goSearchResource() {
@@ -169,6 +202,15 @@ watch(() => [route.query.type, route.query.id], loadAll)
       <van-loading size="20" /> 加载中...
     </div>
   </div>
+
+  <AddRssMediaDialog
+    v-model="rssDialogVisible"
+    :type="(route.query.type as string) === 'tv' || (route.query.type as string) === 'TV' ? 'TV' : 'MOV'"
+    :initial-name="media?.title"
+    :initial-year="media?.year"
+    :initial-keyword="media?.title"
+    @success="onRssSuccess"
+  />
 </template>
 
 <style scoped>
