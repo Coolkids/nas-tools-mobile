@@ -257,6 +257,18 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/MoreView.vue'),
     meta: { title: '更多功能', showTabBar: true, icon: 'more-o' }
   },
+  {
+    path: '/message_center',
+    name: 'message_center',
+    component: () => import('@/views/MessageCenterView.vue'),
+    meta: { title: '消息中心' }
+  },
+  {
+    path: '/real_time_logs',
+    name: 'real_time_logs',
+    component: () => import('@/views/RealTimeLogsView.vue'),
+    meta: { title: '实时日志' }
+  },
 
   {
     path: '/:pathMatch(.*)*',

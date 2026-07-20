@@ -48,9 +48,15 @@ const sections = [
       { name: 'subtitle', label: '字幕', icon: 'label-o', color: '#07c160' },
       { name: 'douban', label: '豆瓣同步', icon: 'star-o', color: '#1989fa' },
       { name: 'users', label: '用户管理', icon: 'contact', color: '#7232dd' },
-
     ]
-  }
+  },
+  {
+    title: '消息与日志',
+    items: [
+      { name: 'message_center', label: '消息中心', icon: 'chat-o', color: '#1989fa' },
+      { name: 'real_time_logs', label: '实时日志', icon: 'info-o', color: '#07c160' },
+    ]
+  },
 ]
 
 function go(name: string) {
