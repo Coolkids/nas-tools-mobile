@@ -166,6 +166,12 @@ async function onDownloadSettingChange(val: string | number) {
   await fetchSavePaths(val)
 }
 
+function toggleItem(arr: string[], item: string) {
+  const i = arr.indexOf(item)
+  if (i >= 0) arr.splice(i, 1)
+  else arr.push(item)
+}
+
 async function submit(keepOpen = false) {
   if (!form.name) { showToast('请输入标题'); return }
   if (!effectiveType.value) { showToast('请选择类型'); return }
@@ -204,131 +210,287 @@ async function submit(keepOpen = false) {
 </script>
 
 <template>
-  <van-popup v-model:show="visible" position="bottom"  :style="{ height: '85%' }" closeable>
-    <div class="popup-header">{{ props.rssid ? '编辑订阅' : '新增订阅' }}</div>
-    <div style="padding: 16px">
-      <van-steps :active="activeStep === 'basic' ? 0 : 1">
+  <van-popup v-model:show="visible" position="bottom" round :style="{ height: '92%' }" closeable class="rss-dialog">
+    <div class="dialog-container">
+      <div class="dialog-header">{{ props.rssid ? '编辑订阅' : '新增订阅' }}</div>
+
+      <van-steps class="dialog-steps" :active="activeStep === 'basic' ? 0 : 1">
         <van-step>基本信息</van-step>
         <van-step>订阅设置</van-step>
       </van-steps>
 
-      <template v-if="activeStep === 'basic'">
-        <van-form @submit="activeStep = 'setting'" style="margin-top: 12px">
-          <van-field name="type" label="类型">
-            <template #input>
-              <van-radio-group v-model="form.type" direction="horizontal">
-                <van-radio name="MOV" shape="square">电影</van-radio>
-                <van-radio name="TV" shape="square">电视剧</van-radio>
-              </van-radio-group>
+      <div class="dialog-main">
+        <van-form v-if="activeStep === 'basic'" class="step-form" @submit="activeStep = 'setting'">
+          <div class="form-body">
+            <div class="group-title">订阅类型</div>
+            <div class="segmented">
+              <div class="segmented-item" :class="{ 'segmented-item--active': form.type === 'MOV' }" @click="form.type = 'MOV'">电影</div>
+              <div class="segmented-item" :class="{ 'segmented-item--active': form.type === 'TV' }" @click="form.type = 'TV'">电视剧</div>
+            </div>
+
+            <div class="group-title">基本信息</div>
+            <van-cell-group inset>
+              <van-field v-model="form.name" label="标题" placeholder="请输入标题" :rules="[{ required: true, message: '请输入标题' }]" />
+              <van-field v-model="form.year" label="年份" placeholder="年份" />
+              <van-field v-model="form.keyword" label="搜索词" placeholder="留空使用TMDB数据" />
+            </van-cell-group>
+
+            <template v-if="effectiveType === 'TV'">
+              <div class="group-title">剧集信息</div>
+              <van-cell-group inset>
+                <van-field
+                  v-model="seasonText"
+                  is-link
+                  readonly
+                  name="season"
+                  label="季"
+                  placeholder="请选择季"
+                  :rules="[{ required: !form.fuzzy_match, message: '请选择季' }]"
+                  @click="showSeasonPicker = true"
+                />
+                <van-field v-model="form.total_ep" label="总集数" placeholder="留空使用TMDB数据" />
+                <van-field v-model="form.current_ep" label="开始集数" placeholder="开始订阅集数" />
+              </van-cell-group>
             </template>
-          </van-field>
-          <van-field v-model="form.name" label="标题" placeholder="请输入标题" :rules="[{ required: true, message: '请输入标题' }]" />
-          <van-field v-model="form.year" label="年份" placeholder="年份" />
-          <van-field v-model="form.keyword" label="搜索词" placeholder="留空使用TMDB数据" />
-          <van-field
-            v-if="effectiveType === 'TV'"
-            v-model="seasonText"
-            is-link
-            readonly
-            name="season"
-            label="季"
-            placeholder="请选择季"
-            :rules="[{ required: !form.fuzzy_match, message: '请选择季' }]"
-            @click="showSeasonPicker = true"
-          />
-          <van-popup v-model:show="showSeasonPicker" position="bottom" >
-            <van-picker
-              :columns="FORM_SEASONS"
-              @confirm="({ selectedOptions }: any) => { form.season = selectedOptions[0].value; showSeasonPicker = false }"
-              @cancel="showSeasonPicker = false"
-              style="height: 300px"
-            />
-          </van-popup>
-          <van-field v-if="effectiveType === 'TV'" v-model="form.total_ep" label="总集数" placeholder="留空使用TMDB数据" />
-          <van-field v-if="effectiveType === 'TV'" v-model="form.current_ep" label="开始集数" placeholder="开始订阅集数" />
-          <van-field name="fuzzy_match" label="模糊匹配">
-            <template #input><van-switch v-model="form.fuzzy_match" /></template>
-          </van-field>
-          <van-field name="over_edition" label="洗版">
-            <template #input><van-switch v-model="form.over_edition" /></template>
-          </van-field>
-          <div style="margin-top: 16px">
-            <van-button  block type="primary" native-type="submit">下一步</van-button>
+
+            <div class="group-title">匹配方式</div>
+            <van-cell-group inset>
+              <van-field name="fuzzy_match" label="模糊匹配">
+                <template #input><van-switch v-model="form.fuzzy_match" /></template>
+              </van-field>
+              <van-field name="over_edition" label="洗版">
+                <template #input><van-switch v-model="form.over_edition" /></template>
+              </van-field>
+            </van-cell-group>
+          </div>
+
+          <div class="form-footer">
+            <van-button class="footer-btn" round type="primary" native-type="submit">下一步</van-button>
           </div>
         </van-form>
-      </template>
 
-      <template v-else>
-        <van-form @submit="submit()" style="margin-top: 12px">
-          <van-field v-model="restypeText" is-link readonly name="filter_restype" label="质量" placeholder="请选择质量" @click="showRestypePicker = true" />
-          <van-popup v-model:show="showRestypePicker" position="bottom" >
-            <van-picker :columns="restypeColumns" @confirm="({ selectedOptions }: any) => { form.filter_restype = selectedOptions[0].value; showRestypePicker = false }" @cancel="showRestypePicker = false" style="height: 300px" />
-          </van-popup>
+        <van-form v-else class="step-form" @submit="submit()">
+          <div class="form-body">
+            <div class="group-title">过滤条件</div>
+            <van-cell-group inset>
+              <van-field v-model="restypeText" is-link readonly name="filter_restype" label="质量" placeholder="请选择质量" @click="showRestypePicker = true" />
+              <van-field v-model="pixText" is-link readonly name="filter_pix" label="分辨率" placeholder="请选择分辨率" @click="showPixPicker = true" />
+              <van-field v-model="form.filter_team" label="制作组" placeholder="支持正则" />
+              <van-field v-model="ruleText" is-link readonly name="filter_rule" label="过滤规则" placeholder="请选择过滤规则" @click="showRulePicker = true" />
+            </van-cell-group>
 
-          <van-field v-model="pixText" is-link readonly name="filter_pix" label="分辨率" placeholder="请选择分辨率" @click="showPixPicker = true" />
-          <van-popup v-model:show="showPixPicker" position="bottom" >
-            <van-picker :columns="pixColumns" @confirm="({ selectedOptions }: any) => { form.filter_pix = selectedOptions[0].value; showPixPicker = false }" @cancel="showPixPicker = false" style="height: 300px" />
-          </van-popup>
+            <div class="group-title">下载设置</div>
+            <van-cell-group inset>
+              <van-field v-model="downloadSettingText" is-link readonly name="download_setting" label="下载设置" placeholder="请选择下载设置" @click="showDownloadSettingPicker = true" />
+              <van-field v-model="savePathText" is-link readonly name="save_path" label="保存路径" placeholder="请选择保存路径" @click="showSavePathPicker = true" />
+            </van-cell-group>
 
-          <van-field v-model="form.filter_team" label="制作组" placeholder="支持正则" />
+            <div class="group-title">订阅站点</div>
+            <van-cell-group inset>
+              <div class="chip-field">
+                <div class="chip-field__label">RSS站点</div>
+                <div class="chips">
+                  <span
+                    v-for="s in rssSites"
+                    :key="s"
+                    class="chip"
+                    :class="{ 'chip--active': rssSitesSelected.includes(s) }"
+                    @click="toggleItem(rssSitesSelected, s)"
+                  >{{ s }}</span>
+                  <span v-if="!rssSites.length" class="chips-empty">暂无可用站点</span>
+                </div>
+              </div>
+              <div class="chip-field">
+                <div class="chip-field__label">搜索站点</div>
+                <div class="chips">
+                  <span
+                    v-for="s in searchSites"
+                    :key="s"
+                    class="chip"
+                    :class="{ 'chip--active': searchSitesSelected.includes(s) }"
+                    @click="toggleItem(searchSitesSelected, s)"
+                  >{{ s }}</span>
+                  <span v-if="!searchSites.length" class="chips-empty">暂无可用站点</span>
+                </div>
+              </div>
+            </van-cell-group>
+          </div>
 
-          <van-field v-model="ruleText" is-link readonly name="filter_rule" label="过滤规则" placeholder="请选择过滤规则" @click="showRulePicker = true" />
-          <van-popup v-model:show="showRulePicker" position="bottom" >
-            <van-picker :columns="ruleColumns" @confirm="({ selectedOptions }: any) => { form.filter_rule = selectedOptions[0].value; showRulePicker = false }" @cancel="showRulePicker = false" style="height: 300px" />
-          </van-popup>
-
-          <van-field v-model="downloadSettingText" is-link readonly name="download_setting" label="下载设置" placeholder="请选择下载设置" @click="showDownloadSettingPicker = true" />
-          <van-popup v-model:show="showDownloadSettingPicker" position="bottom" >
-            <van-picker :columns="downloadSettingColumns" @confirm="({ selectedOptions }: any) => { form.download_setting = selectedOptions[0].value; showDownloadSettingPicker = false; onDownloadSettingChange(selectedOptions[0].value) }" @cancel="showDownloadSettingPicker = false" style="height: 300px" />
-          </van-popup>
-
-          <van-field v-model="savePathText" is-link readonly name="save_path" label="保存路径" placeholder="请选择保存路径" @click="showSavePathPicker = true" />
-          <van-popup v-model:show="showSavePathPicker" position="bottom" >
-            <van-picker :columns="savePathColumns" @confirm="({ selectedOptions }: any) => { form.save_path = selectedOptions[0].value; showSavePathPicker = false }" @cancel="showSavePathPicker = false" style="height: 300px" />
-          </van-popup>
-
-          <van-field name="rss_sites" label="RSS站点">
-            <template #input>
-              <van-checkbox-group v-model="rssSitesSelected" direction="horizontal" class="site-checkboxes">
-                <van-checkbox v-for="s in rssSites" :key="s" :name="s" shape="square">{{ s }}</van-checkbox>
-              </van-checkbox-group>
-            </template>
-          </van-field>
-          <van-field name="search_sites" label="搜索站点">
-            <template #input>
-              <van-checkbox-group v-model="searchSitesSelected" direction="horizontal" class="site-checkboxes">
-                <van-checkbox v-for="s in searchSites" :key="s" :name="s" shape="square">{{ s }}</van-checkbox>
-              </van-checkbox-group>
-            </template>
-          </van-field>
-
-          <div style="display:flex;gap:8px;margin-top:16px">
-            <van-button  block @click="activeStep = 'basic'">上一步</van-button>
-            <van-button  block type="primary" native-type="submit" :loading="submitting">
+          <div class="form-footer">
+            <van-button class="footer-btn" round @click="activeStep = 'basic'">上一步</van-button>
+            <van-button class="footer-btn" round type="primary" native-type="submit" :loading="submitting">
               {{ props.rssid ? '保存' : '添加' }}
             </van-button>
           </div>
         </van-form>
-      </template>
+      </div>
     </div>
+
+    <van-popup v-model:show="showSeasonPicker" position="bottom" round>
+      <van-picker
+        :columns="FORM_SEASONS"
+        @confirm="({ selectedOptions }: any) => { form.season = selectedOptions[0].value; showSeasonPicker = false }"
+        @cancel="showSeasonPicker = false"
+      />
+    </van-popup>
+    <van-popup v-model:show="showRestypePicker" position="bottom" round>
+      <van-picker :columns="restypeColumns" @confirm="({ selectedOptions }: any) => { form.filter_restype = selectedOptions[0].value; showRestypePicker = false }" @cancel="showRestypePicker = false" />
+    </van-popup>
+    <van-popup v-model:show="showPixPicker" position="bottom" round>
+      <van-picker :columns="pixColumns" @confirm="({ selectedOptions }: any) => { form.filter_pix = selectedOptions[0].value; showPixPicker = false }" @cancel="showPixPicker = false" />
+    </van-popup>
+    <van-popup v-model:show="showRulePicker" position="bottom" round>
+      <van-picker :columns="ruleColumns" @confirm="({ selectedOptions }: any) => { form.filter_rule = selectedOptions[0].value; showRulePicker = false }" @cancel="showRulePicker = false" />
+    </van-popup>
+    <van-popup v-model:show="showDownloadSettingPicker" position="bottom" round>
+      <van-picker :columns="downloadSettingColumns" @confirm="({ selectedOptions }: any) => { form.download_setting = selectedOptions[0].value; showDownloadSettingPicker = false; onDownloadSettingChange(selectedOptions[0].value) }" @cancel="showDownloadSettingPicker = false" />
+    </van-popup>
+    <van-popup v-model:show="showSavePathPicker" position="bottom" round>
+      <van-picker :columns="savePathColumns" @confirm="({ selectedOptions }: any) => { form.save_path = selectedOptions[0].value; showSavePathPicker = false }" @cancel="showSavePathPicker = false" />
+    </van-popup>
   </van-popup>
 </template>
 
 <style scoped>
-.popup-header {
+.rss-dialog {
+  --van-primary-color-light: #f0f5ff;
+}
+
+.dialog-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #f7f8fa;
+}
+
+.dialog-header {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 44px;
+  height: 48px;
   padding: 0 44px;
   font-size: 16px;
-  font-weight: 500;
-  text-align: center;
-  border-bottom: 1px solid var(--van-border-color, #ebedf0);
+  font-weight: 600;
+  color: #323233;
 }
-.site-checkboxes {
+
+.dialog-steps {
+  flex-shrink: 0;
+  background: transparent;
+  padding: 0 24px 10px;
+}
+
+.dialog-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.step-form {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.form-body {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 12px;
+}
+
+.group-title {
+  margin: 14px 24px 8px;
+  font-size: 13px;
+  color: #969799;
+}
+
+.group-title:first-child {
+  margin-top: 4px;
+}
+
+/* 类型分段选择器 */
+.segmented {
+  display: flex;
+  margin: 0 16px;
+  padding: 3px;
+  background: #e8e9eb;
+  border-radius: 10px;
+}
+
+.segmented-item {
+  flex: 1;
+  padding: 7px 0;
+  text-align: center;
+  font-size: 14px;
+  color: #646566;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.segmented-item--active {
+  background: #fff;
+  color: var(--van-primary-color, #1989fa);
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+/* 站点标签选择 */
+.chip-field {
+  padding: 12px 16px;
+}
+
+.chip-field + .chip-field {
+  border-top: 1px solid #f2f3f5;
+}
+
+.chip-field__label {
+  margin-bottom: 10px;
+  font-size: 14px;
+  color: #646566;
+}
+
+.chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px 16px;
+  gap: 8px;
+}
+
+.chip {
+  padding: 5px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #646566;
+  background: #f2f3f5;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  transition: all 0.2s;
+}
+
+.chip--active {
+  color: var(--van-primary-color, #1989fa);
+  background: var(--van-primary-color-light, #f0f5ff);
+  border-color: var(--van-primary-color, #1989fa);
+}
+
+.chips-empty {
+  font-size: 13px;
+  color: #969799;
+}
+
+/* 底部按钮 */
+.form-footer {
+  flex-shrink: 0;
+  display: flex;
+  gap: 10px;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  background: #fff;
+  border-top: 1px solid #f2f3f5;
+}
+
+.footer-btn {
+  flex: 1;
 }
 </style>
