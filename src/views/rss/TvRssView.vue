@@ -96,13 +96,13 @@ function onCardClick(item: RssMediaItem) {
 .rss-card { border-radius: 8px; overflow: hidden; }
 .card-bg { position: relative; z-index: 0; height: 160px; overflow: hidden; display: flex; }
 .bg-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; }
-.card-overlay { position: absolute; inset: 0; backg: rgba(0,0,0,0.5); backdrop-filter: blur(6px); z-index: 1; }
+.card-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.5); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); z-index: 1; }
 .card-content { position: relative; z-index: 2; flex: 1; padding: 12px; display: flex; gap: 12px; }
 .card-poster { width: 80px; height: 110px; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); flex-shrink: 0; object-fit: cover; }
-.card-info { flex: 1; display: flex; flex-direction: column; gap: 4px; padding-top: 4px; }
+.card-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding-top: 4px; }
 .info-top { display: flex; gap: 4px; flex-wrap: wrap; }
 .info-year { font-size: 14px; color: rgba(255,255,255,0.8); }
-.info-name { font-size: 16px; font-weight: 600; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.info-name { font-size: 16px; font-weight: 600; color: #fff; line-height: 1.35; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-all; }
 .info-season { font-size: 13px; color: rgba(255,255,255,0.7); }
 .info-meta { display: flex; align-items: center; gap: 6px; font-size: 13px; color: rgba(255,255,255,0.7); }
 .meta-team { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

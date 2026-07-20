@@ -97,7 +97,7 @@ async function onRemove(item: DownloadTask) {
   gap: 8px;
 }
 .task-card {
-  backg: #fff;
+  background: #fff;
   border-radius: 8px;
   padding: 12px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);

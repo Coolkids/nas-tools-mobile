@@ -639,7 +639,7 @@ function formatSize(s: string): string {
 .file-grid { display:flex;flex-direction:column;gap:6px; }
 .file-card {
   display:flex;align-items:flex-start;gap:10px;padding:12px;
-  backg:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.06);
+  background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.06);
 }
 .file-icon { padding-top:2px;flex-shrink:0; }
 .file-body { flex:1;overflow:hidden;min-width:0; }
@@ -654,7 +654,7 @@ function formatSize(s: string): string {
   display:flex;align-items:center;gap:8px;padding:10px 8px;cursor:pointer;border-bottom:1px solid #f5f5f5;
   font-size:14px;
 }
-.tree-node:active { backg:#f5f5f5; }
+.tree-node:active { background:#f5f5f5; }
 .tree-node-label { flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .tree-node-size { font-size:11px;color:#969799;flex-shrink:0; }
 .tree-nav { display:flex;align-items:center;gap:8px;padding:6px 0 10px;border-bottom:1px solid #f5f5f5;margin-bottom:8px; }
@@ -667,7 +667,7 @@ function formatSize(s: string): string {
 .tmdb-title { font-size:13px;font-weight:600;color:#323233;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .tmdb-year { font-size:11px;color:#969799; }
 .progress-box {
-  width:280px;padding:24px;backg:#fff;border-radius:12px;text-align:center;
+  width:280px;padding:24px;background:#fff;border-radius:12px;text-align:center;
 }
 .progress-title { font-size:14px;color:#323233;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .progress-text { font-size:13px;color:#969799; }
