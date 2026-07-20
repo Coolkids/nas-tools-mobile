@@ -355,6 +355,33 @@ async function saveSpeed() {
   padding: 0 12px 12px;
 }
 
+/* 手机竖屏：竖向列表展示；横屏及平板保持方块网格 */
+@media (max-width: 767px) and (orientation: portrait) {
+  .dl-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .dl-card {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+  }
+
+  .dl-icon {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+  }
+
+  .dl-name {
+    flex: 1;
+    text-align: left;
+    font-size: 14px;
+  }
+}
+
 .dir-help {
   font-size: 12px;
   color: var(--van-text-color-3, #999);
