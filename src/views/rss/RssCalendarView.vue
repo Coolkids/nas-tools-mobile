@@ -14,9 +14,11 @@ interface CalendarEvent {
   rssid?: string | number
 }
 
+type ViewMode = 'week' | 'month' | 'schedule'
+
 const loading = ref(false)
 const events = ref<CalendarEvent[]>([])
-const viewMode = ref<'week' | 'month' | 'schedule'>('week')
+const viewMode = ref<ViewMode>('week')
 const currentDate = ref(new Date())
 const selectedDay = ref(new Date())
 
@@ -43,9 +45,19 @@ function isMovie(e: CalendarEvent) {
   return e.type === 'MOV' || e.type === '电影'
 }
 
+const eventsByDate = computed(() => {
+  const map = new Map<string, CalendarEvent[]>()
+  for (const e of events.value) {
+    const key = (e.start || '').slice(0, 10)
+    if (!key) continue
+    if (!map.has(key)) map.set(key, [])
+    map.get(key)!.push(e)
+  }
+  return map
+})
+
 function eventsOf(date: Date) {
-  const key = dateKey(date)
-  return events.value.filter(e => (e.start || '').slice(0, 10) === key)
+  return eventsByDate.value.get(dateKey(date)) || []
 }
 
 const weekStart = computed(() => {
@@ -106,15 +118,9 @@ const monthLabel = computed(() => {
   return `${currentDate.value.getFullYear()}年${currentDate.value.getMonth() + 1}月`
 })
 
-const groupedSchedule = computed(() => {
-  const map = new Map<string, CalendarEvent[]>()
-  for (const e of events.value) {
-    const key = (e.start || '').slice(0, 10)
-    if (!map.has(key)) map.set(key, [])
-    map.get(key)!.push(e)
-  }
-  return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b))
-})
+const groupedSchedule = computed(() =>
+  Array.from(eventsByDate.value.entries()).sort(([a], [b]) => a.localeCompare(b))
+)
 
 const selectedDayEvents = computed(() => eventsOf(selectedDay.value))
 
@@ -141,6 +147,25 @@ function onToday() {
 
 function selectDay(d: Date) {
   selectedDay.value = d
+}
+
+function onCellClick(cell: { date: Date; type: 'prev' | 'current' | 'next' }) {
+  if (cell.type !== 'current') currentDate.value = new Date(cell.date)
+  selectedDay.value = new Date(cell.date)
+}
+
+function switchMode(m: ViewMode) {
+  viewMode.value = m
+  // 切换视图时，若选中日期不在当前范围内则跟随当前日期，避免界面状态不一致
+  if (m === 'week' && !weekDays.value.some(d => isSameDay(d, selectedDay.value))) {
+    selectedDay.value = new Date(currentDate.value)
+  } else if (
+    m === 'month' &&
+    (selectedDay.value.getFullYear() !== currentDate.value.getFullYear() ||
+      selectedDay.value.getMonth() !== currentDate.value.getMonth())
+  ) {
+    selectedDay.value = new Date(currentDate.value)
+  }
 }
 
 onMounted(load)
@@ -201,127 +226,161 @@ async function load() {
   <div class="rss-calendar">
     <van-sticky>
       <div class="calendar-header">
-        <div class="header-top">
+        <div class="header-row">
           <div class="mode-toggle">
-            <button :class="{ active: viewMode === 'week' }" @click="viewMode = 'week'">周</button>
-            <button :class="{ active: viewMode === 'month' }" @click="viewMode = 'month'">月</button>
-            <button :class="{ active: viewMode === 'schedule' }" @click="viewMode = 'schedule'">日程</button>
+            <button :class="{ active: viewMode === 'week' }" @click="switchMode('week')">周</button>
+            <button :class="{ active: viewMode === 'month' }" @click="switchMode('month')">月</button>
+            <button :class="{ active: viewMode === 'schedule' }" @click="switchMode('schedule')">日程</button>
           </div>
-          <button class="refresh-btn" :disabled="loading" @click="load">
-            <van-icon name="replay" />
-          </button>
-        </div>
-        <div v-if="viewMode !== 'schedule'" class="header-nav">
-          <van-icon name="arrow-left" @click="onPrev" />
-          <span class="nav-label" @click="onToday">{{ viewMode === 'week' ? weekLabel : monthLabel }}</span>
-          <van-icon name="arrow" @click="onNext" />
-          <span class="today-btn" @click="onToday">今天</span>
+          <div v-if="viewMode !== 'schedule'" class="header-nav">
+            <button class="nav-arrow" aria-label="上一页" @click="onPrev">
+              <van-icon name="arrow-left" />
+            </button>
+            <span class="nav-label" @click="onToday">{{ viewMode === 'week' ? weekLabel : monthLabel }}</span>
+            <button class="nav-arrow" aria-label="下一页" @click="onNext">
+              <van-icon name="arrow" />
+            </button>
+          </div>
+          <div class="header-actions">
+            <button v-if="viewMode !== 'schedule'" class="today-btn" @click="onToday">今天</button>
+            <button class="refresh-btn" :disabled="loading" aria-label="刷新" @click="load">
+              <van-icon name="replay" :class="{ 'is-spinning': loading }" />
+            </button>
+          </div>
         </div>
       </div>
     </van-sticky>
 
-    <van-loading v-if="loading" size="20" class="loading-tip" />
+    <van-loading v-if="loading" size="22" class="loading-tip">加载中…</van-loading>
 
     <template v-else>
-      <div v-if="viewMode === 'week'" class="week-view">
-        <div class="week-days">
+      <!-- 周视图 -->
+      <div v-if="viewMode === 'week'" class="view-body week-view">
+        <div class="week-strip">
           <div
             v-for="d in weekDays"
             :key="d.getTime()"
             class="week-day-item"
-            :class="{ selected: isSameDay(d, selectedDay), today: isToday(d) && !isSameDay(d, selectedDay) }"
+            :class="{ selected: isSameDay(d, selectedDay), today: isToday(d) }"
             @click="selectDay(d)"
           >
-            <div class="week-day-name">{{ dayNames[d.getDay()] }}</div>
-            <div class="week-day-num">{{ d.getDate() }}</div>
-            <div v-if="eventsOf(d).length" class="week-day-bar" :class="eventsOf(d).some(e => isMovie(e)) ? 'movie' : 'tv'" />
+            <span class="week-day-name">{{ dayNames[d.getDay()] }}</span>
+            <span class="week-day-num">{{ d.getDate() }}</span>
+            <span class="week-dots">
+              <i v-if="eventsOf(d).some(e => isMovie(e))" class="dot movie" />
+              <i v-if="eventsOf(d).some(e => !isMovie(e))" class="dot tv" />
+            </span>
           </div>
         </div>
-        <div class="section-title" style="margin: 12px 12px 0">
-          {{ selectedDay.getMonth() + 1 }}月{{ selectedDay.getDate() }}日
-          <span class="section-day">{{ dayNames[selectedDay.getDay()] }}</span>
+
+        <div class="day-header">
+          <span class="day-title">
+            {{ selectedDay.getMonth() + 1 }}月{{ selectedDay.getDate() }}日
+            <span class="day-week">周{{ dayNames[selectedDay.getDay()] }}</span>
+          </span>
+          <span v-if="selectedDayEvents.length" class="day-count">{{ selectedDayEvents.length }} 项</span>
         </div>
-        <div v-if="!selectedDayEvents.length" class="empty-tip">暂无日程</div>
-        <div v-for="ev in selectedDayEvents" :key="`${ev.id}-${ev.start}`" class="event-card" :class="isMovie(ev) ? 'movie' : 'tv'">
-          <img v-if="ev.poster" :src="ev.poster" class="event-poster" />
-          <div v-else class="event-poster placeholder"><van-icon name="photo-o" /></div>
-          <div class="event-body">
-            <div class="event-title">{{ ev.title }}</div>
-            <div class="event-meta">
-              <van-tag size="small" :type="isMovie(ev) ? 'success' : 'primary'">{{ isMovie(ev) ? '电影' : '剧集' }}</van-tag>
-              <span v-if="ev.vote_average" class="vote">★ {{ ev.vote_average }}</span>
-              <span v-if="ev.year" class="event-year">{{ ev.year }}</span>
+
+        <div v-if="!selectedDayEvents.length" class="empty-tip">
+          <van-icon name="calendar-o" size="30" />
+          <p>当日暂无更新</p>
+        </div>
+        <div v-else class="event-list">
+          <div v-for="ev in selectedDayEvents" :key="`${ev.id}-${ev.start}`" class="event-card" :class="isMovie(ev) ? 'movie' : 'tv'">
+            <img v-if="ev.poster" :src="ev.poster" class="event-poster" loading="lazy" :alt="ev.title" />
+            <div v-else class="event-poster placeholder"><van-icon name="photo-o" /></div>
+            <div class="event-body">
+              <div class="event-title">{{ ev.title }}</div>
+              <div class="event-meta">
+                <van-tag size="small" :type="isMovie(ev) ? 'success' : 'primary'">{{ isMovie(ev) ? '电影' : '剧集' }}</van-tag>
+                <span v-if="ev.vote_average" class="vote">★ {{ ev.vote_average }}</span>
+                <span v-if="ev.year" class="event-year">{{ ev.year }}</span>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div v-if="viewMode === 'month'" class="month-view">
-        <div class="month-grid">
-          <div v-for="n in dayNames" :key="n" class="grid-header">{{ n }}</div>
-          <div
-            v-for="cell in monthDays"
-            :key="cell.date.getTime()"
-            class="grid-cell"
-            :class="{
-              'prev-next': cell.type !== 'current',
-              selected: cell.type === 'current' && isSameDay(cell.date, selectedDay),
-              today: cell.type === 'current' && isToday(cell.date) && !isSameDay(cell.date, selectedDay),
-              'has-event': eventsOf(cell.date).length > 0
-            }"
-            @click="cell.type === 'current' && selectDay(cell.date)"
-          >
-            <span class="cell-num">{{ cell.date.getDate() }}</span>
-            <div v-if="eventsOf(cell.date).length > 0" class="cell-dots">
-              <span v-if="eventsOf(cell.date).some(e => isMovie(e))" class="dot movie-dot" />
-              <span v-if="eventsOf(cell.date).some(e => !isMovie(e))" class="dot tv-dot" />
+      <!-- 月视图 -->
+      <div v-if="viewMode === 'month'" class="view-body month-view">
+        <div class="month-panel">
+          <div class="month-grid">
+            <div v-for="n in dayNames" :key="n" class="grid-header">{{ n }}</div>
+            <div
+              v-for="cell in monthDays"
+              :key="cell.date.getTime()"
+              class="grid-cell"
+              :class="{
+                'prev-next': cell.type !== 'current',
+                selected: cell.type === 'current' && isSameDay(cell.date, selectedDay),
+                today: cell.type === 'current' && isToday(cell.date)
+              }"
+              @click="onCellClick(cell)"
+            >
+              <span class="cell-num">{{ cell.date.getDate() }}</span>
+              <span class="cell-dots">
+                <i v-if="eventsOf(cell.date).some(e => isMovie(e))" class="dot movie" />
+                <i v-if="eventsOf(cell.date).some(e => !isMovie(e))" class="dot tv" />
+              </span>
             </div>
           </div>
         </div>
         <div class="month-events">
-          <div class="section-title" style="margin: 12px 12px 0">
-            {{ selectedDay.getMonth() + 1 }}月{{ selectedDay.getDate() }}日
-            <span class="section-day">{{ dayNames[selectedDay.getDay()] }}</span>
+          <div class="day-header">
+            <span class="day-title">
+              {{ selectedDay.getMonth() + 1 }}月{{ selectedDay.getDate() }}日
+              <span class="day-week">周{{ dayNames[selectedDay.getDay()] }}</span>
+            </span>
+            <span v-if="selectedDayEvents.length" class="day-count">{{ selectedDayEvents.length }} 项</span>
           </div>
-          <div v-if="!selectedDayEvents.length" class="empty-tip">暂无日程</div>
-          <div v-for="ev in selectedDayEvents" :key="`${ev.id}-${ev.start}`" class="event-card" :class="isMovie(ev) ? 'movie' : 'tv'">
-            <img v-if="ev.poster" :src="ev.poster" class="event-poster" />
-            <div v-else class="event-poster placeholder"><van-icon name="photo-o" /></div>
-            <div class="event-body">
-              <div class="event-title">{{ ev.title }}</div>
-              <div class="event-meta">
-                <van-tag size="small" :type="isMovie(ev) ? 'success' : 'primary'">{{ isMovie(ev) ? '电影' : '剧集' }}</van-tag>
-                <span v-if="ev.vote_average" class="vote">★ {{ ev.vote_average }}</span>
-                <span v-if="ev.year" class="event-year">{{ ev.year }}</span>
+          <div v-if="!selectedDayEvents.length" class="empty-tip">
+            <van-icon name="calendar-o" size="30" />
+            <p>当日暂无更新</p>
+          </div>
+          <div v-else class="event-list">
+            <div v-for="ev in selectedDayEvents" :key="`${ev.id}-${ev.start}`" class="event-card" :class="isMovie(ev) ? 'movie' : 'tv'">
+              <img v-if="ev.poster" :src="ev.poster" class="event-poster" loading="lazy" :alt="ev.title" />
+              <div v-else class="event-poster placeholder"><van-icon name="photo-o" /></div>
+              <div class="event-body">
+                <div class="event-title">{{ ev.title }}</div>
+                <div class="event-meta">
+                  <van-tag size="small" :type="isMovie(ev) ? 'success' : 'primary'">{{ isMovie(ev) ? '电影' : '剧集' }}</van-tag>
+                  <span v-if="ev.vote_average" class="vote">★ {{ ev.vote_average }}</span>
+                  <span v-if="ev.year" class="event-year">{{ ev.year }}</span>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div v-if="viewMode === 'schedule'" class="schedule-view">
-        <div v-if="!groupedSchedule.length" class="empty-tip" style="padding-top: 60px">暂无订阅日程</div>
+      <!-- 日程视图 -->
+      <div v-if="viewMode === 'schedule'" class="view-body schedule-view">
+        <van-empty v-if="!groupedSchedule.length" description="暂无订阅日程" />
         <template v-for="[date, list] in groupedSchedule" :key="date">
           <div class="schedule-date">
             <span class="schedule-date-text">{{ date }}</span>
-            <span class="schedule-weekday">{{ dayNames[new Date(date).getDay()] }}</span>
+            <span class="schedule-weekday">周{{ dayNames[new Date(date).getDay()] }}</span>
+            <span class="day-count">{{ list.length }} 项</span>
           </div>
-          <div v-for="ev in list" :key="`${ev.id}-${ev.start}`" class="event-card" :class="isMovie(ev) ? 'movie' : 'tv'">
-            <img v-if="ev.poster" :src="ev.poster" class="event-poster" />
-            <div v-else class="event-poster placeholder"><van-icon name="photo-o" /></div>
-            <div class="event-body">
-              <div class="event-title">{{ ev.title }}</div>
-              <div class="event-meta">
-                <van-tag size="small" :type="isMovie(ev) ? 'success' : 'primary'">{{ isMovie(ev) ? '电影' : '剧集' }}</van-tag>
-                <span v-if="ev.vote_average" class="vote">★ {{ ev.vote_average }}</span>
-                <span v-if="ev.year" class="event-year">{{ ev.year }}</span>
+          <div class="event-list">
+            <div v-for="ev in list" :key="`${ev.id}-${ev.start}`" class="event-card" :class="isMovie(ev) ? 'movie' : 'tv'">
+              <img v-if="ev.poster" :src="ev.poster" class="event-poster" loading="lazy" :alt="ev.title" />
+              <div v-else class="event-poster placeholder"><van-icon name="photo-o" /></div>
+              <div class="event-body">
+                <div class="event-title">{{ ev.title }}</div>
+                <div class="event-meta">
+                  <van-tag size="small" :type="isMovie(ev) ? 'success' : 'primary'">{{ isMovie(ev) ? '电影' : '剧集' }}</van-tag>
+                  <span v-if="ev.vote_average" class="vote">★ {{ ev.vote_average }}</span>
+                  <span v-if="ev.year" class="event-year">{{ ev.year }}</span>
+                </div>
               </div>
             </div>
           </div>
         </template>
-        <div class="schedule-summary">
-          <van-tag type="success">电影</van-tag>
-          <van-tag type="primary">剧集</van-tag>
+        <div v-if="groupedSchedule.length" class="schedule-summary">
+          <span class="legend"><i class="dot movie" />电影</span>
+          <span class="legend"><i class="dot tv" />剧集</span>
           <span class="summary-count">共 {{ events.length }} 个订阅事件</span>
         </div>
       </div>
@@ -332,154 +391,301 @@ async function load() {
 <style scoped>
 .rss-calendar {
   min-height: 100vh;
-  background: #f7f8fa;
+  min-height: 100dvh;
+  background: var(--van-background, #f7f8fa);
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
 }
 
-/* header */
+/* ===== 头部 ===== */
 .calendar-header {
-  background: #fff;
-  padding: 10px 12px 8px;
-  border-bottom: 1px solid #ebedf0;
+  background: var(--van-background-2, #fff);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--van-border-color, #ebedf0);
 }
 
-.header-top {
+.header-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  max-width: 960px;
+  margin: 0 auto;
 }
 
 .mode-toggle {
+  order: 1;
   display: flex;
-  background: #f2f3f5;
-  border-radius: 18px;
-  padding: 2px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 16px;
+  padding: 3px;
 }
 .mode-toggle button {
   border: none;
   background: transparent;
-  color: #646566;
+  color: var(--van-text-color-2, #646566);
   font-size: 13px;
-  padding: 4px 16px;
-  border-radius: 16px;
+  padding: 4px 14px;
+  min-width: 44px;
+  border-radius: 13px;
   transition: all 0.2s;
+  -webkit-tap-highlight-color: transparent;
 }
 .mode-toggle button.active {
-  background: #fff;
-  color: #323233;
+  background: var(--van-background-2, #fff);
+  color: var(--van-text-color, #323233);
   font-weight: 600;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-}
-
-.refresh-btn {
-  border: none;
-  background: transparent;
-  font-size: 18px;
-  padding: 6px;
-  color: #646566;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
 .header-nav {
+  order: 3;
+  flex: 1 1 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 4px;
   margin-top: 8px;
-  font-size: 14px;
-  color: #323233;
-}
-.header-nav :deep(.van-icon) {
-  font-size: 18px;
-  padding: 4px 8px;
-  color: #646566;
-}
-.nav-label {
-  font-weight: 600;
-  min-width: 150px;
-  text-align: center;
-}
-.today-btn {
-  font-size: 12px;
-  color: #1989fa;
-  padding: 2px 10px;
-  border: 1px solid #1989fa;
-  border-radius: 10px;
-  margin-left: 4px;
 }
 
-/* week view */
-.week-days {
+.nav-arrow {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
   display: flex;
-  background: #fff;
-  padding: 12px 8px;
-  border-bottom: 1px solid #ebedf0;
+  align-items: center;
+  justify-content: center;
+  color: var(--van-text-color-2, #646566);
+  font-size: 16px;
+  -webkit-tap-highlight-color: transparent;
 }
+.nav-arrow:active {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.nav-label {
+  min-width: 132px;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--van-text-color, #323233);
+  user-select: none;
+}
+
+.header-actions {
+  order: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.today-btn {
+  border: 1px solid var(--van-primary-color, #1989fa);
+  background: transparent;
+  color: var(--van-primary-color, #1989fa);
+  font-size: 12px;
+  padding: 3px 12px;
+  border-radius: 12px;
+  -webkit-tap-highlight-color: transparent;
+}
+.today-btn:active {
+  background: rgba(25, 137, 250, 0.08);
+}
+
+.refresh-btn {
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--van-text-color-2, #646566);
+  font-size: 17px;
+  -webkit-tap-highlight-color: transparent;
+}
+.refresh-btn:active {
+  background: rgba(0, 0, 0, 0.05);
+}
+.refresh-btn:disabled {
+  color: var(--van-text-color-3, #969799);
+}
+.refresh-btn .is-spinning {
+  animation: cal-spin 0.9s linear infinite;
+}
+@keyframes cal-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ===== 内容容器 ===== */
+.view-body {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+/* ===== 周视图 ===== */
+.week-strip {
+  display: flex;
+  margin: 12px 12px 0;
+  padding: 10px 6px;
+  background: var(--van-background-2, #fff);
+  border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
 .week-day-item {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
-  padding: 6px 0;
-  border-radius: 8px;
-  position: relative;
+  gap: 4px;
+  padding: 4px 0 6px;
+  border-radius: 10px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s;
 }
-.week-day-item.selected {
-  background: #1989fa;
+.week-day-item:active {
+  background: rgba(0, 0, 0, 0.04);
 }
-.week-day-item.selected .week-day-name,
-.week-day-item.selected .week-day-num {
-  color: #fff;
-}
-.week-day-item.today .week-day-num {
-  color: #1989fa;
-  font-weight: 700;
-}
+
 .week-day-name {
   font-size: 11px;
-  color: #969799;
+  color: var(--van-text-color-3, #969799);
 }
-.week-day-num {
-  font-size: 16px;
-  font-weight: 600;
-  color: #323233;
-}
-.week-day-bar {
-  width: 4px;
-  height: 4px;
-  border-radius: 2px;
-  margin-top: 1px;
-}
-.week-day-bar.movie { background: #07c160; }
-.week-day-bar.tv { background: #1989fa; }
 
-/* event cards */
-.event-card {
+.week-day-num {
+  width: 30px;
+  height: 30px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin: 6px 12px;
-  padding: 10px;
-  background: #fff;
-  border-radius: 8px;
-  border-left: 4px solid #1989fa;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--van-text-color, #323233);
 }
-.event-card.movie { border-left-color: #07c160; }
-.event-card.tv { border-left-color: #1989fa; }
+
+.week-day-item.today:not(.selected) .week-day-num {
+  color: var(--van-primary-color, #1989fa);
+  background: rgba(25, 137, 250, 0.1);
+}
+.week-day-item.selected .week-day-num {
+  background: var(--van-primary-color, #1989fa);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(25, 137, 250, 0.35);
+}
+.week-day-item.selected .week-day-name {
+  color: var(--van-primary-color, #1989fa);
+  font-weight: 600;
+}
+
+.week-dots {
+  display: flex;
+  gap: 3px;
+  height: 5px;
+}
+
+/* ===== 事件圆点 ===== */
+.dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.dot.movie { background: var(--van-success-color, #07c160); }
+.dot.tv { background: var(--van-primary-color, #1989fa); }
+
+/* ===== 日期分节标题 ===== */
+.day-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 14px 12px 8px;
+}
+
+.day-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--van-text-color, #323233);
+}
+.day-title::before {
+  content: '';
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--van-primary-color, #1989fa);
+}
+
+.day-week {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--van-text-color-3, #969799);
+}
+
+.day-count {
+  font-size: 11px;
+  color: var(--van-primary-color, #1989fa);
+  background: rgba(25, 137, 250, 0.08);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+/* ===== 事件卡片 ===== */
+.event-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 12px;
+}
+
+.event-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--van-background-2, #fff);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  transition: transform 0.12s ease;
+}
+.event-card:active {
+  transform: scale(0.98);
+}
+.event-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--van-primary-color, #1989fa);
+}
+.event-card.movie::before {
+  background: var(--van-success-color, #07c160);
+}
 
 .event-poster {
-  width: 42px;
-  height: 60px;
+  width: 46px;
+  height: 66px;
   object-fit: cover;
-  border-radius: 4px;
+  border-radius: 6px;
   flex-shrink: 0;
-  background: #f2f3f5;
+  background: var(--van-background, #f2f3f5);
 }
 .event-poster.placeholder {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #c8c9cc;
+  color: var(--van-gray-5, #c8c9cc);
   font-size: 18px;
 }
 
@@ -491,43 +697,51 @@ async function load() {
 .event-title {
   font-size: 14px;
   font-weight: 600;
-  color: #323233;
+  color: var(--van-text-color, #323233);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .event-meta {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 4px;
+  margin-top: 5px;
 }
 
 .vote {
   font-size: 11px;
-  color: #ff976a;
+  color: var(--van-orange, #ff976a);
 }
 
 .event-year {
   font-size: 11px;
-  color: #969799;
+  color: var(--van-text-color-3, #969799);
 }
 
-/* month view */
+/* ===== 月视图 ===== */
+.month-panel {
+  margin: 12px 12px 0;
+  padding: 8px 8px 10px;
+  background: var(--van-background-2, #fff);
+  border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
 .month-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  background: #fff;
-  padding: 8px 4px 4px;
-  border-bottom: 1px solid #ebedf0;
+  gap: 2px 0;
 }
 
 .grid-header {
   text-align: center;
   font-size: 12px;
-  color: #969799;
-  padding: 4px 0 8px;
+  color: var(--van-text-color-3, #969799);
+  padding: 2px 0 8px;
 }
 
 .grid-cell {
@@ -535,111 +749,190 @@ async function load() {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 4px 0;
-  min-height: 44px;
-  border-radius: 6px;
-  position: relative;
+  padding: 3px 0 5px;
+  min-height: 48px;
+  border-radius: 10px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s;
 }
-.grid-cell.prev-next .cell-num {
-  color: #c8c9cc;
+.grid-cell:active {
+  background: rgba(0, 0, 0, 0.04);
 }
-.grid-cell.selected {
-  background: #1989fa;
-}
-.grid-cell.selected .cell-num {
-  color: #fff;
-  font-weight: 600;
-}
-.grid-cell.selected .dot {
-  background: #fff;
-}
-.grid-cell.today .cell-num {
-  color: #1989fa;
-  font-weight: 700;
-}
-.grid-cell.today.selected .cell-num {
-  color: #fff;
+.grid-cell.prev-next {
+  opacity: 0.35;
 }
 
 .cell-num {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
   font-size: 14px;
-  color: #323233;
-  line-height: 1.2;
+  color: var(--van-text-color, #323233);
+  line-height: 1;
+}
+.grid-cell.today:not(.selected) .cell-num {
+  color: var(--van-primary-color, #1989fa);
+  font-weight: 700;
+  background: rgba(25, 137, 250, 0.1);
+}
+.grid-cell.selected .cell-num {
+  background: var(--van-primary-color, #1989fa);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgba(25, 137, 250, 0.35);
 }
 
 .cell-dots {
   display: flex;
-  gap: 2px;
-  margin-top: 2px;
-}
-
-.dot {
-  width: 5px;
+  gap: 3px;
   height: 5px;
-  border-radius: 50%;
-}
-.dot.movie-dot { background: #07c160; }
-.dot.tv-dot { background: #1989fa; }
-
-.month-events {
-  margin-top: 4px;
-  padding-bottom: 12px;
+  margin-top: 3px;
 }
 
-/* schedule view */
+/* ===== 日程视图 ===== */
 .schedule-date {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 12px 4px;
+  margin: 16px 12px 8px;
 }
 .schedule-date-text {
-  font-size: 14px;
-  font-weight: 600;
-  color: #323233;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--van-text-color, #323233);
 }
 .schedule-weekday {
   font-size: 12px;
-  color: #969799;
+  color: var(--van-text-color-3, #969799);
+}
+.schedule-date .day-count {
+  margin-left: auto;
 }
 
 .schedule-summary {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px;
-  border-top: 1px solid #ebedf0;
-  margin-top: 12px;
+  gap: 12px;
+  margin: 16px 12px 0;
+  padding: 10px 12px;
+  background: var(--van-background-2, #fff);
+  border-radius: 12px;
+  font-size: 12px;
+  color: var(--van-text-color-2, #646566);
 }
-
+.legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
 .summary-count {
-  font-size: 12px;
-  color: #969799;
   margin-left: auto;
+  color: var(--van-text-color-3, #969799);
 }
 
-/* common */
-.section-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: #323233;
-}
-.section-day {
-  font-size: 12px;
-  font-weight: 400;
-  color: #969799;
-  margin-left: 6px;
-}
-
+/* ===== 空态 / 加载 ===== */
 .empty-tip {
-  text-align: center;
-  padding: 40px 0;
-  color: #969799;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 36px 0;
+  color: var(--van-text-color-3, #969799);
   font-size: 13px;
+}
+.empty-tip p {
+  margin: 0;
 }
 
 .loading-tip {
   padding: 60px 0;
   justify-content: center;
+}
+
+/* ===== 小屏手机（<360px）===== */
+@media (max-width: 359px) {
+  .calendar-header { padding: 8px 10px; }
+  .mode-toggle button { padding: 4px 11px; min-width: 40px; font-size: 12px; }
+  .nav-label { min-width: 118px; font-size: 14px; }
+  .week-strip { margin: 10px 10px 0; padding: 8px 4px; }
+  .week-day-num { width: 26px; height: 26px; font-size: 14px; }
+  .month-panel { margin: 10px 10px 0; padding: 6px 4px 8px; }
+  .grid-cell { min-height: 44px; }
+  .cell-num { width: 24px; height: 24px; font-size: 13px; }
+  .day-header { margin: 12px 10px 6px; }
+  .event-list { padding: 0 10px; }
+  .event-card { padding: 8px 10px; gap: 10px; }
+  .event-poster { width: 40px; height: 58px; }
+}
+
+/* ===== 较宽屏幕：头部合并为单行 ===== */
+@media (min-width: 600px), (orientation: landscape) and (max-height: 540px) {
+  .header-nav {
+    order: 2;
+    flex: 1 1 auto;
+    margin-top: 0;
+  }
+  .header-actions {
+    order: 3;
+  }
+}
+
+/* ===== 平板 / 大屏 ===== */
+@media (min-width: 768px) {
+  .calendar-header { padding: 12px 16px; }
+  .week-strip { padding: 12px 10px; }
+  .week-day-num { width: 34px; height: 34px; font-size: 16px; }
+  .week-day-name { font-size: 12px; }
+  .grid-cell { min-height: 64px; }
+  .cell-num { width: 30px; height: 30px; font-size: 15px; }
+  .event-poster { width: 54px; height: 78px; }
+  .event-title { font-size: 15px; }
+
+  /* 事件卡片双列展示 */
+  .week-view .event-list,
+  .schedule-view .event-list {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* ===== 月视图左右分栏（平板 & 手机横屏）===== */
+@media (min-width: 768px), (orientation: landscape) and (max-height: 540px) {
+  .month-view {
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 4fr);
+    column-gap: 12px;
+    align-items: start;
+    padding: 0 12px;
+  }
+  .month-view .month-panel { margin: 12px 0 0; }
+  .month-view .month-events { margin-top: 12px; }
+  .month-view .day-header { margin: 0 0 8px; }
+  .month-view .event-list { padding: 0; }
+}
+
+@media (min-width: 1024px) {
+  .week-view .event-list,
+  .schedule-view .event-list {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* ===== 手机横屏（低高度紧凑化，置于最后覆盖）===== */
+@media (orientation: landscape) and (max-height: 540px) {
+  .calendar-header { padding: 6px 12px; }
+  .week-strip { margin-top: 8px; padding: 6px; }
+  .week-day-item { padding: 2px 0 4px; gap: 2px; }
+  .day-header { margin: 10px 12px 6px; }
+  .grid-cell { min-height: 40px; }
+  .empty-tip { padding: 24px 0; }
+  .month-view .month-panel { margin-top: 8px; }
+  .month-view .month-events { margin-top: 8px; }
+  .month-view .day-header { margin: 0 0 6px; }
 }
 </style>
