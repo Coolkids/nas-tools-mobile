@@ -37,11 +37,14 @@ const historyLimit = computed(() => {
   const w = winW.value
   const h = winH.value
   const landscapePhone = w > h && h <= 700 // 横屏（手机及矮高度宽屏设备）
-  if (landscapePhone) return h >= 410 ? 2 : 1
+  if (landscapePhone) return h >= 420 ? 2 : h >= 385 ? 1 : 0
   const portraitPhone = w < 768 && h >= w // 手机竖屏
   if (portraitPhone) return h >= 680 ? 3 : 2
   return h >= 940 ? 3 : 2 // 平板按高度适配
 })
+
+/* 横屏高度不足时，完整播放历史通过弹窗展示 */
+const showHistoryPopup = ref(false)
 
 const usedPercentNum = computed(() => {
   const v = space.value.UsedPercent
@@ -158,6 +161,13 @@ onMounted(load)
       <van-cell-group inset class="history-group" v-if="history.length">
         <van-cell title="播放历史" />
         <van-cell v-for="(item, i) in history.slice(0, historyLimit)" :key="i" :title="item.event" :label="item.date" />
+        <van-cell
+          v-if="history.length > historyLimit"
+          class="history-more"
+          :title="`查看全部（${history.length}）`"
+          is-link
+          @click="showHistoryPopup = true"
+        />
       </van-cell-group>
 
       <van-cell-group inset class="quick-group">
@@ -186,6 +196,23 @@ onMounted(load)
   <div v-else class="loading-tip">
     <van-loading size="20" /> 加载中...
   </div>
+
+  <!-- 横屏高度不足时，通过弹窗展示完整播放历史 -->
+  <van-popup
+    v-model:show="showHistoryPopup"
+    round
+    position="bottom"
+    safe-area-inset-bottom
+    class="history-popup"
+  >
+    <div class="history-popup-header">
+      <span>播放历史</span>
+      <van-icon name="cross" @click="showHistoryPopup = false" />
+    </div>
+    <div class="history-popup-body">
+      <van-cell v-for="(item, i) in history" :key="i" :title="item.event" :label="item.date" />
+    </div>
+  </van-popup>
 </template>
 
 <style scoped>
@@ -229,6 +256,15 @@ onMounted(load)
 .quick-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
 .quick-label { font-size: 11px; color: #646566; }
 .spacer { flex: 1; min-height: 4px; }
+/* "查看全部"仅横屏模式显示（配合弹窗） */
+.home .history-more { display: none; }
+.history-popup { max-height: 70%; }
+.history-popup-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 16px 10px; font-size: 15px; font-weight: 600;
+}
+.history-popup-header .van-icon { color: #969799; cursor: pointer; }
+.history-popup-body { max-height: 55vh; overflow-y: auto; padding-bottom: 8px; }
 
 /* ════════════════════════════════════════════════
    手机竖屏：保持当前布局，一屏铺满，高度不够则压缩元素
@@ -254,7 +290,7 @@ onMounted(load)
   .home .van-cell-group:last-child { margin-bottom: 0 !important; }
   .home .van-cell { padding: 7px 12px !important; }
   .storage-progress { margin: 0 12px 8px; }
-  .quick-group { flex: 1 0 auto; display: flex; flex-direction: column; }
+  .quick-group { flex: 1 0 auto !important; display: flex; flex-direction: column; }
   .quick-grid { flex: 1; min-height: 0; gap: 4px; padding: 4px; align-content: space-evenly; }
   .quick-card { gap: 4px; }
   .quick-icon { width: 28px; height: 28px; }
@@ -280,9 +316,10 @@ onMounted(load)
 
 /* ════════════════════════════════════════════════
    手机横屏：左右布局（左：4 个统计；右：存储/历史/快捷操作）
-   用 max-height 区分手机横屏与平板
+   用 max-height 区分横屏紧凑模式与平板；
+   高度不足时播放历史仅显示 0-2 条，其余通过弹窗查看
    ════════════════════════════════════════════════ */
-@media (orientation: landscape) and (max-height: 500px) {
+@media (orientation: landscape) and (max-height: 700px) {
   .home {
     min-height: 0;
     height: calc(100vh - var(--app-header-height, 46px) - var(--app-tabbar-height, 50px)
@@ -310,17 +347,25 @@ onMounted(load)
   .stat-value { font-size: 16px; }
   .stat-label { font-size: 10px; }
   .sparkline { opacity: 0.25; }
-  /* 右侧：分组自然高度、空间不足时整体收缩裁剪（单元格不再被压扁） */
+  /* 右侧：分组自然高度、空间不足时整体收缩裁剪（单元格不被压扁） */
   .right-col { flex: 1; min-width: 0; min-height: 0; gap: 6px; overflow: hidden; }
   .home .van-cell-group,
   .home .van-cell-group:last-child {
     flex: 0 1 auto; min-height: 0; margin: 0 !important;
     overflow: hidden;
   }
-  .home .van-cell { padding: 3px 10px !important; }
+  /* 压缩单元格行高与字号，使三组在极小高度内放下 */
+  .home .van-cell {
+    padding: 2px 10px !important;
+    font-size: 13px !important;
+    line-height: 18px !important;
+  }
   .home .van-cell :deep(.van-cell__label) {
+    font-size: 11px; line-height: 14px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
+  .home .history-more { display: flex; }
+  .home .history-more :deep(.van-cell__title) { color: var(--van-primary-color); }
   .storage-progress { margin: 0 10px 5px; }
   /* 快捷操作只扩张不收缩，网格行均匀铺满剩余空间 */
   .quick-group { flex: 1 0 auto !important; display: flex; flex-direction: column; }
@@ -337,11 +382,29 @@ onMounted(load)
   .spacer { display: none; }
 }
 
+/* 横屏 - 较高屏幕（501~700px 高，如矮屏平板/分屏）元素放大 */
+@media (orientation: landscape) and (min-height: 501px) and (max-height: 700px) {
+  .stat-card .van-icon { font-size: 28px !important; }
+  .stat-value { font-size: 22px; }
+  .stat-label { font-size: 12px; }
+  .home .van-cell {
+    padding: 6px 14px !important;
+    font-size: 14px !important;
+    line-height: 22px !important;
+  }
+  .home .van-cell :deep(.van-cell__label) { font-size: 12px; line-height: 16px; }
+  .storage-progress { margin: 0 12px 8px; }
+  .quick-icon { width: 32px; height: 32px; }
+  .quick-icon .van-icon { font-size: 17px !important; }
+  .quick-label { font-size: 11px; }
+  .quick-card { gap: 4px; }
+}
+
 /* ════════════════════════════════════════════════
    平板（横竖屏通用）：保持当前布局，按分辨率铺满，无滚动条
    尺寸随视口高度缩放（clamp），统计卡与快捷网格吸收剩余空间
    ════════════════════════════════════════════════ */
-@media (min-width: 768px) and (min-height: 501px) {
+@media (min-width: 768px) and (min-height: 701px) {
   .home {
     min-height: 0;
     height: calc(100vh - var(--app-header-height, 46px) - var(--app-tabbar-height, 50px)
@@ -349,7 +412,7 @@ onMounted(load)
     height: calc(100dvh - var(--app-header-height, 46px) - var(--app-tabbar-height, 50px)
       - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 2px);
     overflow: hidden;
-    padding: 12px 24px;
+    padding: 10px 24px;
   }
   .alert-error { margin-bottom: 10px; }
   /* 统计卡：行高 1fr，随剩余空间增高 */
@@ -358,27 +421,27 @@ onMounted(load)
     grid-template-rows: 1fr 1fr;
     gap: 10px; padding: 0 0 10px;
   }
-  .stat-card { padding: 10px 16px; gap: 12px; }
+  .stat-card { padding: 8px 16px; gap: 12px; }
   .stat-card .van-icon { font-size: clamp(24px, 3.5vh, 32px) !important; }
   .stat-value { font-size: clamp(20px, 3vh, 28px); }
   .stat-label { font-size: clamp(11px, 1.6vh, 13px); }
   .right-col { flex: 1.6 1 auto; min-height: 0; overflow: hidden; }
   .home .van-cell-group { margin: 0 0 10px !important; flex: 0 0 auto; min-height: 0; overflow: hidden; }
-  .home .van-cell { padding: clamp(6px, 1.2vh, 10px) 16px !important; }
-  .storage-progress { margin: 0 16px clamp(6px, 1.2vh, 10px); }
+  .home .van-cell { padding: clamp(4px, 0.9vh, 10px) 16px !important; }
+  .storage-progress { margin: 0 16px clamp(4px, 0.9vh, 10px); }
   /* 快捷操作吸收剩余空间，网格行均匀铺开，实现"铺满" */
   .quick-group {
-    flex: 1 1 auto; min-height: 0; margin-bottom: 0 !important;
+    flex: 1 1 auto !important; min-height: 0; margin-bottom: 0 !important;
     display: flex; flex-direction: column; overflow: hidden;
   }
   .quick-grid {
     flex: 1; min-height: 0;
-    gap: clamp(6px, 1.5vh, 14px);
-    padding: clamp(6px, 1.5vh, 16px);
+    gap: clamp(5px, 1.2vh, 14px);
+    padding: clamp(5px, 1.2vh, 16px);
     align-content: space-evenly;
   }
-  .quick-icon { width: clamp(34px, 5.5vh, 48px); height: clamp(34px, 5.5vh, 48px); }
-  .quick-icon .van-icon { font-size: clamp(17px, 2.8vh, 24px) !important; }
+  .quick-icon { width: clamp(32px, 5vh, 48px); height: clamp(32px, 5vh, 48px); }
+  .quick-icon .van-icon { font-size: clamp(16px, 2.6vh, 24px) !important; }
   .quick-label { font-size: clamp(11px, 1.6vh, 13px); }
   .spacer { display: none; }
 }
