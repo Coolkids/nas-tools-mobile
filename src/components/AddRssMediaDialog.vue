@@ -191,7 +191,8 @@ async function submit(keepOpen = false) {
 </script>
 
 <template>
-  <van-popup v-model:show="visible" position="bottom"  :style="{ height: '85%' }" closeable :title="props.rssid ? '编辑订阅' : '新增订阅'">
+  <van-popup v-model:show="visible" position="bottom"  :style="{ height: '85%' }" closeable>
+    <div class="popup-header">{{ props.rssid ? '编辑订阅' : '新增订阅' }}</div>
     <div style="padding: 16px">
       <van-steps :active="activeStep === 'basic' ? 0 : 1">
         <van-step>基本信息</van-step>
@@ -293,6 +294,17 @@ async function submit(keepOpen = false) {
 </template>
 
 <style scoped>
+.popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  padding: 0 44px;
+  font-size: 16px;
+  font-weight: 500;
+  text-align: center;
+  border-bottom: 1px solid var(--van-border-color, #ebedf0);
+}
 .site-checkboxes {
   display: flex;
   flex-wrap: wrap;
