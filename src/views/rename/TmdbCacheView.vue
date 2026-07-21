@@ -4,34 +4,49 @@ import { showToast, showConfirmDialog } from 'vant'
 import { getTmdbCache, deleteTmdbCache, clearTmdbCache, type TmdbCacheItem } from '@/api/rename'
 
 const loading = ref(false)
+const refreshing = ref(false)
 const items = ref<TmdbCacheItem[]>([])
 const page = ref(1)
-const total = ref(0)
+const hasMore = ref(true)
 
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w154'
 
-onMounted(load)
+onMounted(() => load(1))
 
-async function load() {
+async function load(p: number) {
+  page.value = p
   loading.value = true
   try {
     const res = await getTmdbCache({ page: page.value })
     if (res.code === 0) {
-      items.value = res.result || []
-      total.value = res.total || 0
+      const list = res.result || []
+      if (page.value === 1) items.value = list
+      else items.value = items.value.concat(list)
+      hasMore.value = list.length > 0
     }
   } catch { showToast('加载失败') } finally { loading.value = false }
+}
+
+async function onRefresh() {
+  refreshing.value = true
+  await load(1)
+  refreshing.value = false
+}
+
+async function onLoadMore() {
+  if (loading.value || !hasMore.value) return
+  await load(page.value + 1)
 }
 
 async function onClear() {
   const ok = await showConfirmDialog({ title: '清空', message: '确认清空TMDB缓存？' }).catch(() => false)
   if (!ok) return
-  try { await clearTmdbCache(); showToast('清空成功'); load() }
+  try { await clearTmdbCache(); showToast('清空成功'); load(1) }
   catch { showToast('清空失败') }
 }
 
 async function onDelete(key: string) {
-  try { await deleteTmdbCache(key); showToast('删除成功'); load() }
+  try { await deleteTmdbCache(key); showToast('删除成功'); load(1) }
   catch { showToast('删除失败') }
 }
 
@@ -49,36 +64,44 @@ function mediaTypeLabel(t: string) {
 <template>
   <div class="tmdb-cache page">
     <div style="padding:8px 12px;display:flex;gap:8px">
-      <van-button size="small" plain icon="replay" @click="load">刷新</van-button>
+      <van-button size="small" plain icon="replay" @click="onRefresh">刷新</van-button>
       <van-button size="small" plain type="danger" icon="delete-o" @click="onClear">清空缓存</van-button>
     </div>
 
-    <van-empty v-if="!loading && items.length === 0" description="暂无TMDB缓存" />
+    <van-pull-refresh v-model="refreshing" @refresh="onRefresh">
+      <van-loading v-if="loading && items.length === 0" size="20" style="padding:40px;text-align:center" />
 
-    <div v-else class="card-list">
-      <div v-for="[key, info, _] in items" :key="key" class="cache-card">
-        <img
-          v-if="info.poster_path"
-          :src="posterUrl(info.poster_path)"
-          class="card-poster"
-          @error="($event.target as HTMLImageElement).style.display = 'none'"
-        />
-        <div v-else class="card-poster placeholder">
-          <van-icon name="fire-o" size="24" color="#c8c9cc" />
-        </div>
-        <div class="card-body">
-          <div class="card-title">{{ info.title }}</div>
-          <div class="card-meta">
-            <van-tag v-if="info.media_type" size="small" :type="info.media_type === 'MOV' ? 'primary' : 'success'">
-              {{ mediaTypeLabel(info.media_type) }}
-            </van-tag>
-            <span v-if="info.year" class="meta-year">{{ info.year }}</span>
+      <van-empty v-else-if="items.length === 0" description="暂无TMDB缓存" />
+
+      <div v-else class="card-list">
+        <div v-for="[key, info, _] in items" :key="key" class="cache-card">
+          <img
+            v-if="info.poster_path"
+            :src="posterUrl(info.poster_path)"
+            class="card-poster"
+            @error="($event.target as HTMLImageElement).style.display = 'none'"
+          />
+          <div v-else class="card-poster placeholder">
+            <van-icon name="fire-o" size="24" color="#c8c9cc" />
           </div>
-          <div class="card-key">{{ key }}</div>
+          <div class="card-body">
+            <div class="card-title">{{ info.title }}</div>
+            <div class="card-meta">
+              <van-tag v-if="info.media_type" size="small" :type="info.media_type === 'MOV' ? 'primary' : 'success'">
+                {{ mediaTypeLabel(info.media_type) }}
+              </van-tag>
+              <span v-if="info.year" class="meta-year">{{ info.year }}</span>
+            </div>
+            <div class="card-key">{{ key }}</div>
+          </div>
+          <van-icon name="delete" class="card-delete" @click="onDelete(key)" />
         </div>
-        <van-icon name="delete" class="card-delete" @click="onDelete(key)" />
+        <div v-if="hasMore" class="load-more" @click="onLoadMore">
+          <van-loading v-if="loading" size="14" />
+          <span v-else>点击加载更多</span>
+        </div>
       </div>
-    </div>
+    </van-pull-refresh>
   </div>
 </template>
 
@@ -146,5 +169,16 @@ function mediaTypeLabel(t: string) {
   color: #ee0a24;
   padding: 8px;
   flex-shrink: 0;
+}
+.load-more {
+  text-align: center;
+  padding: 12px;
+  font-size: 13px;
+  color: #969799;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 </style>
