@@ -492,7 +492,7 @@ onBeforeUnmount(() => {
                 size="small"
                 class="results-table"
                 :scroll-y="{ enabled: true, gt: 20 }"
-                :row-config="{ height: 72, isHover: false }"
+                :row-config="{ height: 'auto', isHover: false }"
               >
                 <vxe-column field="site" title="站点" width="60">
                   <template #default="{ row }">
