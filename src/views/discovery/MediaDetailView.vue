@@ -23,10 +23,11 @@ const media = ref<MediaDetail | null>(null)
 const recommendations = ref<RecommendItem[]>([])
 const persons = ref<PersonItem[]>([])
 const loading = ref(false)
+const refreshing = ref(false)
 const errMsg = ref('')
 const rssDialogVisible = ref(false)
 
-async function loadAll() {
+async function loadAll(withToast = true) {
   const type = (route.query.type as string) || 'movie'
   const id = (route.query.id as string) || ''
   if (!id) {
@@ -38,7 +39,7 @@ async function loadAll() {
   media.value = null
   recommendations.value = []
   persons.value = []
-  showLoadingToast({ message: '加载中...', forbidClick: true })
+  if (withToast) showLoadingToast({ message: '加载中...', forbidClick: true })
   try {
     const res = await mediaDetail(type, id)
     if (res.code !== 0 || !res.data) {
@@ -58,8 +59,14 @@ async function loadAll() {
     errMsg.value = e instanceof Error ? e.message : '加载失败'
   } finally {
     loading.value = false
-    closeToast()
+    if (withToast) closeToast()
   }
+}
+
+async function onRefresh() {
+  refreshing.value = true
+  await loadAll(false)
+  refreshing.value = false
 }
 
 async function onToggleFav() {
@@ -110,97 +117,99 @@ watch(() => [route.query.type, route.query.id], loadAll)
 
 <template>
   <div class="media-detail">
-    <van-alert v-if="errMsg" type="danger" :title="errMsg" />
+    <van-pull-refresh v-model="refreshing" @refresh="onRefresh">
+      <van-alert v-if="errMsg" type="danger" :title="errMsg" />
 
-    <template v-if="media">
-      <div class="backdrop">
-        <img v-if="media.background" :src="media.background" class="backdrop-img"
-          @error="($event.target as HTMLImageElement).style.display = 'none'" />
-        <div class="backdrop-mask" />
-        <div class="backdrop-content">
-          <img v-if="media.image" :src="media.image" class="poster"
+      <template v-if="media">
+        <div class="backdrop">
+          <img v-if="media.background" :src="media.background" class="backdrop-img"
             @error="($event.target as HTMLImageElement).style.display = 'none'" />
-          <div v-else class="poster placeholder">
-            <van-icon name="tv-o" size="32" />
-          </div>
-          <div class="info">
-            <div v-if="media.fav === '2'" class="fav-badge">
-              <van-icon name="success" /> 已下载
+          <div class="backdrop-mask" />
+          <div class="backdrop-content">
+            <img v-if="media.image" :src="media.image" class="poster"
+              @error="($event.target as HTMLImageElement).style.display = 'none'" />
+            <div v-else class="poster placeholder">
+              <van-icon name="tv-o" size="32" />
             </div>
-            <h1 class="title">
-              {{ media.title }}
-              <span v-if="media.year" class="year">({{ media.year }})</span>
-            </h1>
-            <div class="meta">
-              <van-tag v-if="media.tmdbid" type="success" size="small">TMDB: {{ media.tmdbid }}</van-tag>
-              <van-tag v-if="media.vote && media.vote !== '0'" type="warning" size="small">评分 {{ media.vote }}</van-tag>
-            </div>
-            <div class="meta-text">{{ media.runtime }} {{ media.genres }}</div>
-            <div class="actions">
-              <van-button size="small" type="primary" @click="goSearchResource">搜索资源</van-button>
-              <van-button size="small" :type="media.fav === '1' ? 'danger' : 'default'" @click="onToggleFav">
-                {{ media.fav === '1' ? '删除订阅' : '添加订阅' }}
-              </van-button>
+            <div class="info">
+              <div v-if="media.fav === '2'" class="fav-badge">
+                <van-icon name="success" /> 已下载
+              </div>
+              <h1 class="title">
+                {{ media.title }}
+                <span v-if="media.year" class="year">({{ media.year }})</span>
+              </h1>
+              <div class="meta">
+                <van-tag v-if="media.tmdbid" type="success" size="small">TMDB: {{ media.tmdbid }}</van-tag>
+                <van-tag v-if="media.vote && media.vote !== '0'" type="warning" size="small">评分 {{ media.vote }}</van-tag>
+              </div>
+              <div class="meta-text">{{ media.runtime }} {{ media.genres }}</div>
+              <div class="actions">
+                <van-button size="small" type="primary" @click="goSearchResource">搜索资源</van-button>
+                <van-button size="small" :type="media.fav === '1' ? 'danger' : 'default'" @click="onToggleFav">
+                  {{ media.fav === '1' ? '删除订阅' : '添加订阅' }}
+                </van-button>
+              </div>
             </div>
           </div>
         </div>
+
+        <div class="body-content">
+          <div class="block">
+            <div class="section-title">简介</div>
+            <p class="overview">{{ media.overview || '暂无简介' }}</p>
+            <div v-if="media.crews?.length" class="crews">
+              <div v-for="(crew, idx) in media.crews" :key="idx" class="crew-item">
+                <strong>{{ Object.keys(crew)[0] }}</strong>
+                <span class="text-muted">{{ Object.values(crew)[0] }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="media.fact?.length" class="block">
+            <div class="section-title">发布信息</div>
+            <div class="fact-card">
+              <div v-for="(fact, idx) in media.fact" :key="idx" class="fact-row">
+                <span class="fact-label">{{ Object.keys(fact)[0] }}</span>
+                <span class="fact-value">{{ Object.values(fact)[0] }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="block">
+            <div class="section-title">演员阵容</div>
+            <div v-if="persons.length === 0" style="padding:12px;text-align:center;color:#969799;font-size:13px">暂无演员信息</div>
+            <div v-else class="person-grid">
+              <PersonCard
+                v-for="person in persons" :key="person.id"
+                :person-id="person.id" :image="person.image"
+                :name="person.name" :role="person.role"
+              />
+            </div>
+          </div>
+
+          <div class="block">
+            <div class="section-title">推荐影片</div>
+            <div v-if="recommendations.length === 0" style="padding:12px;text-align:center;color:#969799;font-size:13px">暂无推荐</div>
+            <div v-else class="media-grid">
+              <MediaCard
+                v-for="(item, idx) in recommendations" :key="`${item.id}-${idx}`"
+                :tmdb-id="item.id" :title="item.title"
+                :image="proxyDoubanImage(item.image)" :fav="item.fav"
+                :vote="item.vote" :year="item.year"
+                :overview="item.overview" :date="item.date"
+                :media-type="item.type" :res-type="item.media_type"
+                :show-sub="'1'"
+              />
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <div v-else-if="!errMsg" class="loading-tip">
+        <van-loading size="20" /> 加载中...
       </div>
-
-      <div class="body-content">
-        <div class="block">
-          <div class="section-title">简介</div>
-          <p class="overview">{{ media.overview || '暂无简介' }}</p>
-          <div v-if="media.crews?.length" class="crews">
-            <div v-for="(crew, idx) in media.crews" :key="idx" class="crew-item">
-              <strong>{{ Object.keys(crew)[0] }}</strong>
-              <span class="text-muted">{{ Object.values(crew)[0] }}</span>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="media.fact?.length" class="block">
-          <div class="section-title">发布信息</div>
-          <div class="fact-card">
-            <div v-for="(fact, idx) in media.fact" :key="idx" class="fact-row">
-              <span class="fact-label">{{ Object.keys(fact)[0] }}</span>
-              <span class="fact-value">{{ Object.values(fact)[0] }}</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="block">
-          <div class="section-title">演员阵容</div>
-          <div v-if="persons.length === 0" style="padding:12px;text-align:center;color:#969799;font-size:13px">暂无演员信息</div>
-          <div v-else class="person-grid">
-            <PersonCard
-              v-for="person in persons" :key="person.id"
-              :person-id="person.id" :image="person.image"
-              :name="person.name" :role="person.role"
-            />
-          </div>
-        </div>
-
-        <div class="block">
-          <div class="section-title">推荐影片</div>
-          <div v-if="recommendations.length === 0" style="padding:12px;text-align:center;color:#969799;font-size:13px">暂无推荐</div>
-          <div v-else class="media-grid">
-            <MediaCard
-              v-for="(item, idx) in recommendations" :key="`${item.id}-${idx}`"
-              :tmdb-id="item.id" :title="item.title"
-              :image="proxyDoubanImage(item.image)" :fav="item.fav"
-              :vote="item.vote" :year="item.year"
-              :overview="item.overview" :date="item.date"
-              :media-type="item.type" :res-type="item.media_type"
-              :show-sub="'1'"
-            />
-          </div>
-        </div>
-      </div>
-    </template>
-
-    <div v-else-if="!errMsg" class="loading-tip">
-      <van-loading size="20" /> 加载中...
-    </div>
+    </van-pull-refresh>
   </div>
 
   <AddRssMediaDialog

@@ -1,12 +1,16 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showToast } from 'vant'
+import { useScrollParent } from '@vant/use'
 import MediaCard from '@/components/MediaCard.vue'
 import { getRecommend, proxyDoubanImage, type RecommendItem } from '@/api/discovery'
 
 const route = useRoute()
 const router = useRouter()
+
+const root = ref<HTMLElement>()
+const scrollParent = useScrollParent(root)
 
 interface FilterSet {
   name: string
@@ -28,6 +32,7 @@ const items = ref<RecommendItem[]>([])
 const loading = ref(false)
 const noMore = ref(false)
 const initializing = ref(false)
+const refreshing = ref(false)
 const filterParams = ref<Record<string, string>>({})
 const activeFilterKey = ref('')
 const showFilterSheet = ref(false)
@@ -197,7 +202,13 @@ async function loadPage() {
       else { items.value.push(...list); page.value += 1 }
     } else { showToast(res.msg || '加载失败'); noMore.value = true }
   } catch { if (fetchGen === gen) { showToast('加载失败'); noMore.value = true } }
-  finally { if (gen === fetchGen) loading.value = false }
+  finally {
+    if (gen === fetchGen) {
+      loading.value = false
+      // 内容不足以撑满滚动区域时继续加载下一页
+      nextTick(() => onScroll())
+    }
+  }
 }
 
 async function reset() {
@@ -210,10 +221,26 @@ async function reset() {
   initializing.value = false
 }
 
+async function onRefresh() {
+  refreshing.value = true
+  if (isRanking.value) await loadRankings()
+  else await reset()
+  refreshing.value = false
+}
+
+function distanceToBottom() {
+  const sp = scrollParent.value
+  if (sp && sp !== window) {
+    const el = sp as HTMLElement
+    return el.scrollHeight - el.clientHeight - el.scrollTop
+  }
+  const el = document.documentElement
+  return el.scrollHeight - el.clientHeight - el.scrollTop
+}
+
 function onScroll() {
   if (loading.value || noMore.value || isRanking.value) return
-  const el = document.documentElement
-  if (el.scrollHeight - el.clientHeight - el.scrollTop < 300) loadPage()
+  if (distanceToBottom() < 300) loadPage()
 }
 
 function onFavChange(idx: number, fav: string) {
@@ -321,97 +348,99 @@ onMounted(() => {
   initFromRoute()
   if (isRanking.value) loadRankings()
   else reset()
-  window.addEventListener('scroll', onScroll, { passive: true })
+  scrollParent.value?.addEventListener('scroll', onScroll, { passive: true })
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('scroll', onScroll)
+  scrollParent.value?.removeEventListener('scroll', onScroll)
 })
 </script>
 
 <template>
-  <div class="recommend-view">
+  <div class="recommend-view" ref="root">
     <van-sticky>
       <van-tabs v-model:active="activeCategory" @change="switchCategory" swipeable>
         <van-tab v-for="cat in CATEGORIES" :key="cat.name" :name="cat.name" :title="cat.label" />
       </van-tabs>
     </van-sticky>
 
-    <div class="filter-bar" v-if="isFilterable">
-      <div class="filter-chips">
-        <div
-          v-for="(fs, key) in filterSets"
-          :key="key"
-          class="filter-chip"
-          :class="{ active: filterParams[key] }"
-          @click="openFilter(key)"
-        >
-          <span>{{ filterParams[key] ? currentFilterLabel(key, fs) : fs.name }}</span>
-          <van-icon v-if="filterParams[key]" name="close" size="12" @click="(e: Event) => clearFilter(key, e)" />
-          <van-icon v-else name="arrow-down" size="12" />
-        </div>
-      </div>
-    </div>
-
-    <template v-if="isRanking">
-      <div v-for="section in rankingSections" :key="section.title" class="ranking-section">
-        <div class="ranking-header" @click="goRoute(section.route)">
-          <span class="ranking-title">{{ section.title }}</span>
-          <van-icon name="arrow" color="#969799" />
-        </div>
-        <div v-if="section.loaded && section.items.length" class="ranking-scroll">
-          <div v-for="item in section.items" :key="item.id" class="ranking-card" @click="goDetail(item)">
-            <img :src="proxyDoubanImage(item.image)" class="ranking-poster" />
-            <div class="ranking-name">{{ item.title }}</div>
-            <div v-if="item.vote" class="ranking-vote">{{ String(item.vote).replace(/[\[\]]/g, '').trim() }}</div>
-          </div>
-        </div>
-        <div v-else class="ranking-loading"><van-loading size="16" /></div>
-      </div>
-
-      <div class="ranking-section">
-        <div class="ranking-header" @click="goRoute('bangumi')">
-          <span class="ranking-title">Bangumi 每日放送 · {{ weekDayNames[todayWeek] }}</span>
-          <div style="display:flex;align-items:center;gap:4px;font-size:13px;color:#969799">
-            <span>全部</span><van-icon name="arrow" color="#969799" />
-          </div>
-        </div>
-        <div v-if="bangumiLoading" class="ranking-loading"><van-loading size="16" /></div>
-        <div v-else-if="bangumiToday.length" class="ranking-scroll">
-          <div v-for="item in bangumiToday" :key="item.id" class="ranking-card" @click="goDetail(item)">
-            <img :src="proxyDoubanImage(item.image)" class="ranking-poster" />
-            <div class="ranking-name">{{ item.title }}</div>
-            <div v-if="item.date" class="ranking-vote" style="color:#969799">{{ item.date }}</div>
+    <van-pull-refresh v-model="refreshing" @refresh="onRefresh">
+      <div class="filter-bar" v-if="isFilterable">
+        <div class="filter-chips">
+          <div
+            v-for="(fs, key) in filterSets"
+            :key="key"
+            class="filter-chip"
+            :class="{ active: filterParams[key] }"
+            @click="openFilter(key)"
+          >
+            <span>{{ filterParams[key] ? currentFilterLabel(key, fs) : fs.name }}</span>
+            <van-icon v-if="filterParams[key]" name="close" size="12" @click="(e: Event) => clearFilter(key, e)" />
+            <van-icon v-else name="arrow-down" size="12" />
           </div>
         </div>
       </div>
-    </template>
 
-    <template v-else>
-      <van-empty v-if="!initializing && !loading && items.length === 0" description="没有数据" />
-      <div v-else class="media-grid" style="padding: 8px">
-        <MediaCard
-          v-for="(item, idx) in items"
-          :key="`${item.id}-${idx}`"
-          :tmdb-id="item.id"
-          :title="item.title"
-          :image="proxyDoubanImage(item.image)"
-          :fav="item.fav"
-          :vote="item.vote"
-          :year="item.year"
-          :overview="item.overview"
-          :date="item.date"
-          :media-type="item.type"
-          :res-type="item.media_type"
-          :show-sub="'1'"
-          :site="item.site"
-          :weekday="item.weekday"
-          @fav-change="onFavChange(idx, $event)"
-        />
-      </div>
-      <div v-if="loading" class="loading-tip"><van-loading size="16" /> 加载中...</div>
-      <div v-else-if="noMore && items.length > 0" class="loading-tip">没有更多了</div>
-    </template>
+      <template v-if="isRanking">
+        <div v-for="section in rankingSections" :key="section.title" class="ranking-section">
+          <div class="ranking-header" @click="goRoute(section.route)">
+            <span class="ranking-title">{{ section.title }}</span>
+            <van-icon name="arrow" color="#969799" />
+          </div>
+          <div v-if="section.loaded && section.items.length" class="ranking-scroll">
+            <div v-for="item in section.items" :key="item.id" class="ranking-card" @click="goDetail(item)">
+              <img :src="proxyDoubanImage(item.image)" class="ranking-poster" />
+              <div class="ranking-name">{{ item.title }}</div>
+              <div v-if="item.vote" class="ranking-vote">{{ String(item.vote).replace(/[\[\]]/g, '').trim() }}</div>
+            </div>
+          </div>
+          <div v-else class="ranking-loading"><van-loading size="16" /></div>
+        </div>
+
+        <div class="ranking-section">
+          <div class="ranking-header" @click="goRoute('bangumi')">
+            <span class="ranking-title">Bangumi 每日放送 · {{ weekDayNames[todayWeek] }}</span>
+            <div style="display:flex;align-items:center;gap:4px;font-size:13px;color:#969799">
+              <span>全部</span><van-icon name="arrow" color="#969799" />
+            </div>
+          </div>
+          <div v-if="bangumiLoading" class="ranking-loading"><van-loading size="16" /></div>
+          <div v-else-if="bangumiToday.length" class="ranking-scroll">
+            <div v-for="item in bangumiToday" :key="item.id" class="ranking-card" @click="goDetail(item)">
+              <img :src="proxyDoubanImage(item.image)" class="ranking-poster" />
+              <div class="ranking-name">{{ item.title }}</div>
+              <div v-if="item.date" class="ranking-vote" style="color:#969799">{{ item.date }}</div>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <template v-else>
+        <van-empty v-if="!initializing && !loading && items.length === 0" description="没有数据" />
+        <div v-else class="media-grid" style="padding: 8px">
+          <MediaCard
+            v-for="(item, idx) in items"
+            :key="`${item.id}-${idx}`"
+            :tmdb-id="item.id"
+            :title="item.title"
+            :image="proxyDoubanImage(item.image)"
+            :fav="item.fav"
+            :vote="item.vote"
+            :year="item.year"
+            :overview="item.overview"
+            :date="item.date"
+            :media-type="item.type"
+            :res-type="item.media_type"
+            :show-sub="'1'"
+            :site="item.site"
+            :weekday="item.weekday"
+            @fav-change="onFavChange(idx, $event)"
+          />
+        </div>
+        <div v-if="loading" class="loading-tip"><van-loading size="16" /> 加载中...</div>
+        <div v-else-if="noMore && items.length > 0" class="loading-tip">没有更多了</div>
+      </template>
+    </van-pull-refresh>
 
     <van-action-sheet
       v-model:show="showFilterSheet"

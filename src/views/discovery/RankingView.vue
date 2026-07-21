@@ -44,6 +44,7 @@ const categories = computed(() => DISCOVERY_LIST[discoveryType.value] || [])
 
 const slideMap = ref<Record<string, RecommendItem[]>>({})
 const loadingMap = ref<Record<string, boolean>>({})
+const refreshing = ref(false)
 
 const tabs = [
   { label: '榜单', name: 'ranking' },
@@ -69,12 +70,16 @@ async function loadCategory(cat: DiscoveryCategory) {
   }
 }
 
-function loadAll() {
+async function loadAll() {
   slideMap.value = {}
   loadingMap.value = {}
-  for (const cat of categories.value) {
-    loadCategory(cat)
-  }
+  await Promise.all(categories.value.map(cat => loadCategory(cat)))
+}
+
+async function onRefresh() {
+  refreshing.value = true
+  await loadAll()
+  refreshing.value = false
 }
 
 onMounted(loadAll)
@@ -87,35 +92,37 @@ watch(() => route.name, () => loadAll())
       <van-tab v-for="t in tabs" :key="t.name" :name="t.name" :title="t.label" />
     </van-tabs>
 
-    <div class="sections">
-      <section v-for="cat in categories" :key="cat.title" class="section">
-        <div class="section-title">{{ cat.title }}</div>
+    <van-pull-refresh v-model="refreshing" @refresh="onRefresh">
+      <div class="sections">
+        <section v-for="cat in categories" :key="cat.title" class="section">
+          <div class="section-title">{{ cat.title }}</div>
 
-        <div v-if="loadingMap[cat.title]" class="loading-tip">
-          <van-loading size="16" /> 加载中...
-        </div>
-        <van-empty v-else-if="!slideMap[cat.title] || slideMap[cat.title].length === 0" :image-size="60" description="暂无数据" />
-        <div v-else class="slide-row">
-          <MediaCard
-            v-for="(item, idx) in slideMap[cat.title]"
-            :key="`${cat.title}-${item.id}-${idx}`"
-            :tmdb-id="item.id"
-            :title="item.title"
-            :image="proxyDoubanImage(item.image)"
-            :fav="item.fav"
-            :vote="item.vote"
-            :year="item.year"
-            :overview="item.overview"
-            :date="item.date"
-            :media-type="item.type"
-            :res-type="item.media_type"
-            :show-sub="'1'"
-            :site="item.site"
-            :weekday="item.weekday"
-          />
-        </div>
-      </section>
-    </div>
+          <div v-if="loadingMap[cat.title]" class="loading-tip">
+            <van-loading size="16" /> 加载中...
+          </div>
+          <van-empty v-else-if="!slideMap[cat.title] || slideMap[cat.title].length === 0" :image-size="60" description="暂无数据" />
+          <div v-else class="slide-row">
+            <MediaCard
+              v-for="(item, idx) in slideMap[cat.title]"
+              :key="`${cat.title}-${item.id}-${idx}`"
+              :tmdb-id="item.id"
+              :title="item.title"
+              :image="proxyDoubanImage(item.image)"
+              :fav="item.fav"
+              :vote="item.vote"
+              :year="item.year"
+              :overview="item.overview"
+              :date="item.date"
+              :media-type="item.type"
+              :res-type="item.media_type"
+              :show-sub="'1'"
+              :site="item.site"
+              :weekday="item.weekday"
+            />
+          </div>
+        </section>
+      </div>
+    </van-pull-refresh>
   </div>
 </template>
 

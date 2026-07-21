@@ -1,12 +1,16 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showToast } from 'vant'
+import { useScrollParent } from '@vant/use'
 import MediaCard from '@/components/MediaCard.vue'
 import { personMedias, proxyDoubanImage, type RecommendItem } from '@/api/discovery'
 
 const route = useRoute()
 const router = useRouter()
+
+const root = ref<HTMLElement>()
+const scrollParent = useScrollParent(root)
 
 const personId = computed(() => (route.query.id as string) || (route.query.tmdbid as string) || '')
 const personName = computed(() => (route.query.name as string) || (route.query.title as string) || '人物')
@@ -19,6 +23,7 @@ const items = ref<RecommendItem[]>([])
 const page = ref(1)
 const loading = ref(false)
 const noMore = ref(false)
+const refreshing = ref(false)
 
 function switchType(t: 'MOV' | 'TV') {
   if (t === creditType.value) return
@@ -48,6 +53,8 @@ async function loadPage() {
     noMore.value = true
   } finally {
     loading.value = false
+    // 内容不足以撑满滚动区域时继续加载下一页
+    nextTick(() => onScroll())
   }
 }
 
@@ -55,17 +62,32 @@ function reset() {
   items.value = []
   page.value = 1
   noMore.value = false
-  loadPage()
+  return loadPage()
+}
+
+async function onRefresh() {
+  refreshing.value = true
+  await reset()
+  refreshing.value = false
+}
+
+function distanceToBottom() {
+  const sp = scrollParent.value
+  if (sp && sp !== window) {
+    const el = sp as HTMLElement
+    return el.scrollHeight - el.clientHeight - el.scrollTop
+  }
+  const el = document.documentElement
+  return el.scrollHeight - el.clientHeight - el.scrollTop
 }
 
 function onScroll() {
   if (loading.value || noMore.value) return
-  const { scrollTop, scrollHeight, clientHeight } = document.documentElement
-  if (scrollHeight - clientHeight - scrollTop < 200) loadPage()
+  if (distanceToBottom() < 200) loadPage()
 }
 
-onMounted(() => { reset(); window.addEventListener('scroll', onScroll, { passive: true }) })
-onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
+onMounted(() => { reset(); scrollParent.value?.addEventListener('scroll', onScroll, { passive: true }) })
+onBeforeUnmount(() => scrollParent.value?.removeEventListener('scroll', onScroll))
 watch(personId, () => reset())
 watch(creditType, () => reset())
 watch(() => route.query.type, (t) => {
@@ -75,34 +97,36 @@ watch(() => route.query.type, (t) => {
 </script>
 
 <template>
-  <div class="person-view">
-    <div class="person-header">
-      <van-avatar :size="72" class="person-avatar">{{ personName.charAt(0) || '?' }}</van-avatar>
-      <div class="person-meta">
-        <h2 class="person-name">{{ personName }}</h2>
-        <van-radio-group :model-value="creditType" direction="horizontal" @change="switchType">
-          <van-radio name="MOV" shape="square">参演电影</van-radio>
-          <van-radio name="TV" shape="square">参演剧集</van-radio>
-        </van-radio-group>
+  <div class="person-view" ref="root">
+    <van-pull-refresh v-model="refreshing" @refresh="onRefresh">
+      <div class="person-header">
+        <van-avatar :size="72" class="person-avatar">{{ personName.charAt(0) || '?' }}</van-avatar>
+        <div class="person-meta">
+          <h2 class="person-name">{{ personName }}</h2>
+          <van-radio-group :model-value="creditType" direction="horizontal" @change="switchType">
+            <van-radio name="MOV" shape="square">参演电影</van-radio>
+            <van-radio name="TV" shape="square">参演剧集</van-radio>
+          </van-radio-group>
+        </div>
       </div>
-    </div>
 
-    <van-empty v-if="!loading && items.length === 0" description="暂无作品" />
+      <van-empty v-if="!loading && items.length === 0" description="暂无作品" />
 
-    <div v-else class="media-grid">
-      <MediaCard
-        v-for="(item, idx) in items" :key="`${item.id}-${idx}`"
-        :tmdb-id="item.id" :title="item.title"
-        :image="proxyDoubanImage(item.image)" :fav="item.fav"
-        :vote="item.vote" :year="item.year"
-        :overview="item.overview" :date="item.date"
-        :media-type="item.type" :res-type="item.media_type"
-        :show-sub="'1'"
-      />
-    </div>
+      <div v-else class="media-grid">
+        <MediaCard
+          v-for="(item, idx) in items" :key="`${item.id}-${idx}`"
+          :tmdb-id="item.id" :title="item.title"
+          :image="proxyDoubanImage(item.image)" :fav="item.fav"
+          :vote="item.vote" :year="item.year"
+          :overview="item.overview" :date="item.date"
+          :media-type="item.type" :res-type="item.media_type"
+          :show-sub="'1'"
+        />
+      </div>
 
-    <div v-if="loading" class="loading-tip"><van-loading size="16" /> 加载中...</div>
-    <div v-else-if="noMore && items.length > 0" class="loading-tip"><span>没有更多了</span></div>
+      <div v-if="loading" class="loading-tip"><van-loading size="16" /> 加载中...</div>
+      <div v-else-if="noMore && items.length > 0" class="loading-tip"><span>没有更多了</span></div>
+    </van-pull-refresh>
   </div>
 </template>
 
