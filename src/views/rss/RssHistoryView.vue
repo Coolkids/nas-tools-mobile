@@ -123,7 +123,7 @@ function goDetail(item: RssHistoryItem) {
             </div>
           </div>
           <div class="card-actions" @click.stop>
-            <van-tag size="small" type="primary" plain class="action-tag" @click="onReRss(item)">重新订阅</van-tag>
+            <van-button size="small" type="primary" class="re-rss-btn" @click="onReRss(item)">重新订阅</van-button>
             <van-icon name="delete" class="delete-icon" @click="onDelete(item)" />
           </div>
         </div>
@@ -135,12 +135,11 @@ function goDetail(item: RssHistoryItem) {
     </van-pull-refresh>
 
     <AddRssMediaDialog
-      v-if="reRssItem"
       v-model="showReRss"
-      :type="(reRssItem.TYPE as 'MOV' | 'TV')"
-      :initial-name="reRssItem.NAME"
-      :initial-year="reRssItem.YEAR"
-      :initial-keyword="reRssItem.NAME"
+      :type="(reRssItem?.TYPE as 'MOV' | 'TV')"
+      :initial-name="reRssItem?.NAME"
+      :initial-year="reRssItem?.YEAR"
+      :initial-keyword="reRssItem?.NAME"
       @success="onReRssSuccess"
       @error="showToast($event)"
     />
@@ -232,8 +231,10 @@ function goDetail(item: RssHistoryItem) {
   flex-shrink: 0;
   justify-content: center;
 }
-.action-tag {
-  cursor: pointer;
+.re-rss-btn {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
 }
 .delete-icon {
   font-size: 18px;
