@@ -2,8 +2,9 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast, showConfirmDialog } from 'vant'
-import { getRssHistory, deleteRssHistory, reRssHistory, type RssHistoryItem, type RssType } from '@/api/rss'
+import { getRssHistory, deleteRssHistory, type RssHistoryItem, type RssType } from '@/api/rss'
 import { proxyDoubanImage } from '@/api/discovery'
+import AddRssMediaDialog from '@/components/AddRssMediaDialog.vue'
 
 const router = useRouter()
 const loading = ref(false)
@@ -13,6 +14,8 @@ const activeType = ref<string>('')
 const page = ref(1)
 const total = ref(0)
 const hasMore = ref(true)
+const showReRss = ref(false)
+const reRssItem = ref<RssHistoryItem | null>(null)
 
 const tabs = [
   { label: '全部', value: '' },
@@ -65,12 +68,14 @@ async function onDelete(item: RssHistoryItem) {
   } catch { showToast('删除失败') }
 }
 
-async function onReRss(item: RssHistoryItem) {
-  try {
-    const res = await reRssHistory(item.RSSID, item.TYPE as RssType)
-    if (res.code === 0) { showToast('已重新订阅'); load(1) }
-    else showToast(res.msg || '重新订阅失败')
-  } catch { showToast('重新订阅失败') }
+function onReRss(item: RssHistoryItem) {
+  reRssItem.value = item
+  showReRss.value = true
+}
+
+function onReRssSuccess() {
+  showReRss.value = false
+  load(1)
 }
 
 function goDetail(item: RssHistoryItem) {
@@ -128,6 +133,17 @@ function goDetail(item: RssHistoryItem) {
         </div>
       </div>
     </van-pull-refresh>
+
+    <AddRssMediaDialog
+      v-if="reRssItem"
+      v-model="showReRss"
+      :type="(reRssItem.TYPE as 'MOV' | 'TV')"
+      :initial-name="reRssItem.NAME"
+      :initial-year="reRssItem.YEAR"
+      :initial-keyword="reRssItem.NAME"
+      @success="onReRssSuccess"
+      @error="showToast($event)"
+    />
   </div>
 </template>
 
