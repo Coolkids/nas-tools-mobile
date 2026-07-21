@@ -2,19 +2,10 @@
 import { onMounted, reactive, ref } from 'vue'
 
 import { useConfigForm } from '@/composables/useConfigForm'
+import { RMT_MODES } from '@/utils/rmtMode'
 
 const { config, loading, saving, load, save } = useConfigForm()
 
-const RMT_MODES = [
-  { value: 'copy', label: '复制' },
-  { value: 'link', label: '硬链接' },
-  { value: 'softlink', label: '软链接' },
-  { value: 'move', label: '移动' },
-  { value: 'rclonecopy', label: 'Rclone复制' },
-  { value: 'rclone', label: 'Rclone移动' },
-  { value: 'miniocopy', label: 'Minio复制' },
-  { value: 'minio', label: 'Minio移动' }
-]
 const LOG_TYPES = [
   { value: 'console', label: '控制台' },
   { value: 'file', label: '文件' },

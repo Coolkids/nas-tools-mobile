@@ -5,6 +5,7 @@ import { showToast } from 'vant'
 import { useModalStore } from '@/stores/modal'
 import { doAction } from '@/api/request'
 import { nameTest, refreshProcess, type NameTestData, type RefreshProcessResult } from '@/api/system'
+import { RMT_MODES } from '@/utils/rmtMode'
 
 interface FileItem {
   path: string
@@ -103,16 +104,7 @@ function stopProgressPolling() {
 
 const defaultSyncmod = ref('copy')
 const showSyncmodPicker = ref(false)
-const SYNC_MODS = [
-  { text: '硬链接', value: 'link' },
-  { text: '软链接', value: 'softlink' },
-  { text: '复制', value: 'copy' },
-  { text: '移动', value: 'move' },
-  { text: 'Rclone复制', value: 'rclonecopy' },
-  { text: 'Rclone移动', value: 'rclone' },
-  { text: 'Minio复制', value: 'miniocopy' },
-  { text: 'Minio移动', value: 'minio' },
-]
+const SYNC_MODS = RMT_MODES.map(m => ({ text: m.label, value: m.value as string }))
 
 function openSyncmodPicker() {
   showTransfer.value = false

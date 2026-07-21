@@ -1,4 +1,5 @@
 import { doAction } from './request'
+import type { RmtMode } from '@/utils/rmtMode'
 
 export interface TransferHistoryItem {
   ID: number
@@ -101,7 +102,7 @@ export function clearTmdbCache(): Promise<{ code: number; msg?: string }> {
   return doAction('clear_tmdb_cache', {})
 }
 
-export type TransferMode = 'copy' | 'link' | 'softlink' | 'move' | 'rclone' | 'rclonecopy' | 'minio' | 'miniocopy'
+export type TransferMode = RmtMode
 export type ManualMediaType = 'movie' | 'tv' | 'anime'
 
 export interface RenameUdfParams {

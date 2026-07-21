@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { showToast, showConfirmDialog } from 'vant'
 import { getUnknownList, delUnknownPath, renameUdf, type UnknownItem, type TransferMode, type ManualMediaType } from '@/api/rename'
+import { rmtModeLabel } from '@/utils/rmtMode'
 
 const loading = ref(false)
 const items = ref<UnknownItem[]>([])
@@ -39,11 +40,6 @@ async function onDelete(id: number) {
   try { await delUnknownPath(id); showToast('删除成功'); load() }
   catch { showToast('删除失败') }
 }
-
-function syncModeLabel(m: string) {
-  const map: Record<string, string> = { copy: '复制', link: '硬链接', move: '移动', softlink: '软链接' }
-  return map[m] || m
-}
 </script>
 
 <template>
@@ -61,8 +57,8 @@ function syncModeLabel(m: string) {
             <div class="file-name">{{ item.name }}</div>
             <div class="file-path" :title="item.path">{{ item.path }}</div>
             <div class="tags-row">
-              <van-tag v-if="item.rmt_mode" size="small" plain type="info">{{ syncModeLabel(item.rmt_mode) }}</van-tag>
-              <van-tag v-if="item.sync_mode" size="small" plain type="primary">{{ syncModeLabel(item.sync_mode) }}</van-tag>
+              <van-tag v-if="item.rmt_mode" size="small" plain type="info">{{ rmtModeLabel(item.rmt_mode) }}</van-tag>
+              <van-tag v-if="item.sync_mode" size="small" plain type="primary">{{ rmtModeLabel(item.sync_mode) }}</van-tag>
             </div>
           </div>
         </div>
