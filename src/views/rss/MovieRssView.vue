@@ -14,6 +14,8 @@ const items = ref<RssMediaItem[]>([])
 const showAdd = ref(false)
 const detailItem = ref<RssMediaItem | null>(null)
 const showDetail = ref(false)
+const showEdit = ref(false)
+const editRssid = ref<string | number>('')
 const activeTab = ref<'MOV' | 'TV'>('MOV')
 
 onMounted(() => load(activeTab.value))
@@ -52,6 +54,11 @@ function progressOf(item: RssMediaItem) {
 function onCardClick(item: RssMediaItem) {
   detailItem.value = item
   showDetail.value = true
+}
+
+function onDetailEdit(rssid: string | number) {
+  editRssid.value = rssid
+  showEdit.value = true
 }
 </script>
 
@@ -104,7 +111,8 @@ function onCardClick(item: RssMediaItem) {
     </div>
 
     <AddRssMediaDialog v-model="showAdd" :type="activeTab" @success="showAdd = false; load(activeTab)" @error="showToast($event)" />
-    <RssMediaDetailDialog v-model="showDetail" :item="detailItem" :type="activeTab" @removed="showDetail = false; load(activeTab)" />
+    <AddRssMediaDialog v-model="showEdit" :type="activeTab" :rssid="editRssid" @success="showEdit = false; load(activeTab)" @error="showToast($event)" />
+    <RssMediaDetailDialog v-model="showDetail" :item="detailItem" :type="activeTab" @edit="onDetailEdit" @removed="showDetail = false; load(activeTab)" @searched="load(activeTab)" @refreshed="load(activeTab)" />
   </div>
 </template>
 

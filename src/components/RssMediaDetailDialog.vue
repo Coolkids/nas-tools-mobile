@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { showToast, showConfirmDialog } from 'vant'
-import { removeRssMedia, type RssMediaItem, type RssType } from '@/api/rss'
+import { removeRssMedia, refreshRss, type RssMediaItem, type RssType } from '@/api/rss'
 import { useModalStore } from '@/stores/modal'
 
 const props = defineProps<{
@@ -13,6 +13,9 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:modelValue', v: boolean): void
   (e: 'removed'): void
+  (e: 'edit', rssid: string | number): void
+  (e: 'searched'): void
+  (e: 'refreshed'): void
 }>()
 
 const modal = useModalStore()
@@ -33,6 +36,12 @@ function progressOf(item: RssMediaItem) {
   return Math.round(((total - (item.lack || 0)) * 100) / total)
 }
 
+function onEdit() {
+  if (!props.item) return
+  visible.value = false
+  emit('edit', props.item.id)
+}
+
 async function onRemove() {
   if (!props.item) return
   const ok = await modal.confirm(`确认删除订阅「${props.item.name}」？`)
@@ -42,6 +51,24 @@ async function onRemove() {
     if (res.code === 0) { showToast('取消订阅成功'); visible.value = false; emit('removed') }
     else showToast(res.msg || '取消订阅失败')
   } catch { showToast('取消订阅失败') }
+}
+
+async function onSearch() {
+  if (!props.item) return
+  try {
+    const res = await refreshRss(props.item.id, props.type)
+    if (res.code === 0) { showToast('已触发搜索'); emit('searched') }
+    else showToast(res.msg || '触发搜索失败')
+  } catch { showToast('触发搜索失败') }
+}
+
+async function onRefresh() {
+  if (!props.item) return
+  try {
+    const res = await refreshRss(props.item.id, props.type)
+    if (res.code === 0) { showToast('已触发刷新'); emit('refreshed') }
+    else showToast(res.msg || '触发刷新失败')
+  } catch { showToast('触发刷新失败') }
 }
 </script>
 
@@ -83,7 +110,11 @@ async function onRemove() {
     </div>
 
     <div class="sheet-footer">
-      <van-button class="footer-btn" round type="danger" @click="onRemove">取消订阅</van-button>
+      <van-button class="footer-btn" type="primary" @click="onEdit">编辑</van-button>
+      <van-button class="footer-btn" type="danger" @click="onRemove">取消订阅</van-button>
+      <van-button class="footer-btn" @click="onSearch">搜索</van-button>
+      <van-button class="footer-btn" @click="onRefresh">刷新</van-button>
+      <van-button class="footer-btn" @click="visible = false">关闭</van-button>
     </div>
   </van-action-sheet>
 </template>
@@ -180,10 +211,15 @@ async function onRemove() {
 }
 
 .sheet-footer {
-  padding: 4px 16px calc(12px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 8px 16px calc(12px + env(safe-area-inset-bottom));
 }
 
 .footer-btn {
-  width: 100%;
+  flex: 1;
+  min-width: calc(50% - 5px);
+  border-radius: 6px;
 }
 </style>

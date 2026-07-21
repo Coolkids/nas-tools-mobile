@@ -12,6 +12,8 @@ const modal = useModalStore()
 const loading = ref(false)
 const items = ref<RssMediaItem[]>([])
 const showAdd = ref(false)
+const showEdit = ref(false)
+const editRssid = ref<string | number>('')
 const detailItem = ref<RssMediaItem | null>(null)
 const showDetail = ref(false)
 
@@ -45,6 +47,11 @@ function progressOf(item: RssMediaItem) {
 function onCardClick(item: RssMediaItem) {
   detailItem.value = item
   showDetail.value = true
+}
+
+function onDetailEdit(rssid: string | number) {
+  editRssid.value = rssid
+  showEdit.value = true
 }
 </script>
 
@@ -87,7 +94,8 @@ function onCardClick(item: RssMediaItem) {
     </div>
 
     <AddRssMediaDialog v-model="showAdd" type="TV" @success="showAdd = false; load()" @error="showToast($event)" />
-    <RssMediaDetailDialog v-model="showDetail" :item="detailItem" type="TV" @removed="showDetail = false; load()" />
+    <AddRssMediaDialog v-model="showEdit" type="TV" :rssid="editRssid" @success="showEdit = false; load()" @error="showToast($event)" />
+    <RssMediaDetailDialog v-model="showDetail" :item="detailItem" type="TV" @edit="onDetailEdit" @removed="showDetail = false; load()" @searched="load()" @refreshed="load()" />
   </div>
 </template>
 

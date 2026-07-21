@@ -101,7 +101,8 @@ async function loadEditDetail() {
     if (res.code !== 0 || !res.detail) return
     const d = res.detail
     Object.assign(form, {
-      name: d.name || '', year: d.year || '', keyword: d.keyword || '', season: d.season || '',
+      name: d.name || '', year: d.year || '', keyword: d.keyword || '',
+      season: String(parseInt((d.season || '').replace(/^S/, ''), 10) || ''),
       fuzzy_match: !!d.fuzzy_match, over_edition: !!d.over_edition,
       total_ep: String(d.total_ep ?? ''), current_ep: String(d.current_ep ?? ''),
       filter_restype: d.filter_restype || '', filter_pix: d.filter_pix || '', filter_team: d.filter_team || '',
