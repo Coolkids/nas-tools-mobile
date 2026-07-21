@@ -491,8 +491,8 @@ onBeforeUnmount(() => {
                 stripe
                 size="small"
                 class="results-table"
-                :scroll-y="{ enabled: true, gt: 20 }"
-                :row-config="{ height: 'auto', isHover: false }"
+                :virtual-y-config="{ enabled: true, gt: 0 }"
+                :row-config="{ isHover: false }"
               >
                 <vxe-column field="site" title="站点" width="60">
                   <template #default="{ row }">
@@ -966,7 +966,6 @@ onBeforeUnmount(() => {
   line-height: 1.4;
   word-break: break-all;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -1080,9 +1079,6 @@ onBeforeUnmount(() => {
 @media (orientation: landscape) and (min-width: 960px) {
   .tmdb-panel {
     width: 300px;
-  }
-  .cell-name {
-    -webkit-line-clamp: 1;
   }
 }
 
