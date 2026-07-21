@@ -175,7 +175,10 @@ function recalcTable() {
     if (!main) return
     const filterBar = main.querySelector('.filter-bar') as HTMLElement | null
     const used = filterBar ? filterBar.offsetHeight + 8 : 0
-    tableHeight.value = Math.max(200, main.clientHeight - used)
+    // clientHeight 含上下 padding，需减去，否则表格会超出底部（竖屏 padding 为 12px）
+    const style = getComputedStyle(main)
+    const vPadding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
+    tableHeight.value = Math.max(200, main.clientHeight - used - vPadding)
     vxeTableRef.value?.recalculate()
   })
 }
