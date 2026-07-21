@@ -136,7 +136,7 @@ onMounted(load)
     <template v-else>
       <div class="section-title">选择索引器</div>
       <div class="server-grid">
-        <div class="server-card" @click="openBuiltin">
+        <div class="server-card" :class="{ active: activeIndexer === 'builtin' }" @click="openBuiltin">
           <div class="server-icon">
             <img :src="`/static/img/${BUILTIN_IMG}`" alt="内建索引器" />
           </div>
@@ -148,6 +148,7 @@ onMounted(load)
           v-for="s in EXTERNAL_SERVERS"
           :key="s.type"
           class="server-card"
+          :class="{ active: activeIndexer === s.type }"
           @click="openExternal(s)"
         >
           <div class="server-icon">
@@ -217,8 +218,14 @@ onMounted(load)
   padding: 14px 8px 10px;
   background: #fff;
   border-radius: 10px;
+  border: 2px solid transparent;
   cursor: pointer;
+  transition: border-color 0.15s;
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.server-card.active {
+  border-color: var(--van-primary-color, #1989fa);
 }
 
 .server-icon {
