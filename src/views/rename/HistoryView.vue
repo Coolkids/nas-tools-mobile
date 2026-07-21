@@ -37,10 +37,6 @@ async function onDelete(item: TransferHistoryItem) {
   } catch { showToast('删除失败') }
 }
 
-function modeLabel(mode: string) {
-  const map: Record<string, string> = { COPY: '复制', MOVE: '移动', LINK: '硬链接', SOFTLINK: '软链接' }
-  return map[mode] || mode
-}
 </script>
 
 <template>
@@ -62,11 +58,12 @@ function modeLabel(mode: string) {
         </div>
 
         <div class="tags-row">
-          <van-tag v-if="item.TYPE === 'TV'" size="small" type="success">电视剧</van-tag>
-          <van-tag v-else size="small" type="primary">电影</van-tag>
+          <van-tag v-if="item.TYPE === '电影'" size="small" type="primary">电影</van-tag>
+          <van-tag v-else-if="item.TYPE === '电视剧'" size="small" type="success">电视剧</van-tag>
+          <van-tag v-else-if="item.TYPE === '动漫'" size="small" type="warning">动漫</van-tag>
           <van-tag v-if="item.CATEGORY" size="small" plain>{{ item.CATEGORY }}</van-tag>
           <van-tag v-if="item.SEASON_EPISODE" size="small" plain type="warning">{{ item.SEASON_EPISODE }}</van-tag>
-          <van-tag v-if="item.MODE" size="small" plain type="info">{{ modeLabel(item.MODE) }}</van-tag>
+          <van-tag v-if="item.RMT_MODE" size="small" plain type="info">{{ item.RMT_MODE }}</van-tag>
         </div>
 
         <div class="path-row">
@@ -90,9 +87,9 @@ function modeLabel(mode: string) {
 
         <div class="card-footer">
           <span class="date-text">{{ item.DATE || '' }}</span>
-          <span v-if="item.SYNC_MODE || item.RMT_MODE" class="mode-text">
-            {{ item.SYNC_MODE === 'copy' ? '同步复制' : item.SYNC_MODE === 'link' ? '同步硬链' : '' }}
-            {{ item.RMT_MODE === 'COPY' ? '传输复制' : item.RMT_MODE === 'MOVE' ? '传输移动' : '' }}
+          <span class="footer-info">
+            <span v-if="item.SOURCE" class="source-text">来自：{{ item.SOURCE }}</span>
+            <span v-if="item.RMT_MODE" class="mode-text">转移方式：{{ item.RMT_MODE }}</span>
           </span>
         </div>
       </div>
@@ -208,6 +205,15 @@ function modeLabel(mode: string) {
   font-size: 11px;
 }
 .date-text {
+  color: #969799;
+}
+.footer-info {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.source-text {
   color: #969799;
 }
 .mode-text {
