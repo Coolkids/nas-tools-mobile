@@ -448,6 +448,7 @@ onBeforeUnmount(() => {
       :actions="activeFilterOptions.map(o => ({ name: o.label, value: o.value }))"
       @select="(a: any) => onFilterSelect(a.value)"
     />
+    <van-back-top :bottom="70" />
   </div>
 </template>
 

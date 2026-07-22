@@ -127,6 +127,7 @@ watch(() => route.query.type, (t) => {
       <div v-if="loading" class="loading-tip"><van-loading size="16" /> 加载中...</div>
       <div v-else-if="noMore && items.length > 0" class="loading-tip"><span>没有更多了</span></div>
     </van-pull-refresh>
+    <van-back-top :bottom="70" />
   </div>
 </template>
 

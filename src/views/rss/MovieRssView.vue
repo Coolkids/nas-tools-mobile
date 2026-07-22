@@ -113,6 +113,7 @@ function onDetailEdit(rssid: string | number) {
     <AddRssMediaDialog v-model="showAdd" :type="activeTab" @success="showAdd = false; load(activeTab)" @error="showToast($event)" />
     <AddRssMediaDialog v-model="showEdit" :type="activeTab" :rssid="editRssid" @success="showEdit = false; load(activeTab)" @error="showToast($event)" />
     <RssMediaDetailDialog v-model="showDetail" :item="detailItem" :type="activeTab" @edit="onDetailEdit" @removed="showDetail = false; load(activeTab)" @searched="load(activeTab)" @refreshed="load(activeTab)" />
+    <van-back-top :bottom="70" />
   </div>
 </template>
 

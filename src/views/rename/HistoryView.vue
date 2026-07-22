@@ -160,6 +160,7 @@ async function onDelete(item: TransferHistoryItem) {
       </div>
       <div v-else class="no-more">没有更多了</div>
     </div>
+    <van-back-top :bottom="70" />
   </div>
 </template>
 

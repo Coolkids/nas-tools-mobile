@@ -143,6 +143,7 @@ function goDetail(item: RssHistoryItem) {
       @success="onReRssSuccess"
       @error="showToast($event)"
     />
+    <van-back-top :bottom="70" />
   </div>
 </template>
 

@@ -102,6 +102,7 @@ function mediaTypeLabel(t: string) {
         </div>
       </div>
     </van-pull-refresh>
+    <van-back-top :bottom="70" />
   </div>
 </template>
 
