@@ -78,6 +78,10 @@ export function reIdentification(flag: 'history' | 'unidentification', ids: Arra
   return doAction('re_identification', { flag, ids })
 }
 
+export function restoreHistory(logid: number | string): Promise<{ retcode: number; retmsg: string }> {
+  return doAction('restore_transfer_history', { logid })
+}
+
 export function getUnknownList(): Promise<{ code: number; msg?: string; items: UnknownItem[] }> {
   return doAction('get_unknown_list', {})
 }
