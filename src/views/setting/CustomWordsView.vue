@@ -49,6 +49,16 @@ const WORD_TYPES = [
   { value: 4, label: '集偏移' }
 ]
 
+const SEASON_OPTIONS = [
+  { text: '全部季', value: -1 },
+  ...Array.from({ length: 30 }, (_, i) => ({ text: `第${i + 1}季`, value: i + 1 }))
+]
+
+const GROUP_TYPE_OPTIONS = [
+  { text: '电影', value: 'movie' },
+  { text: '电视剧', value: 'tv' }
+]
+
 function toggleGroup(id: number) {
   const s = new Set(expandedGroups.value)
   if (s.has(id)) s.delete(id)
@@ -88,6 +98,14 @@ function selectGroupAll(group: WordGroup, checked: boolean) {
   selectedIds.value = s
 }
 
+function groupSelectedCount(group: WordGroup): number {
+  let n = 0
+  for (const w of group.words) {
+    if (selectedIds.value.has(`${group.id}_${w.id}`)) n++
+  }
+  return n
+}
+
 const editVisible = ref(false)
 const editTitle = ref('新增识别词')
 const form = reactive({
@@ -104,6 +122,14 @@ const form = reactive({
   type: 1,
   enabled: 1,
   regex: 1
+})
+
+const showWordTypePicker = ref(false)
+const showSeasonPicker = ref(false)
+const showGroupTypePicker = ref(false)
+
+const seasonFieldText = computed(() => {
+  return SEASON_OPTIONS.find(o => o.value === form.season)?.text || '全部季'
 })
 
 function resetForm() {
@@ -358,385 +384,679 @@ function wordTypeLabel(t: number): string {
 
 <template>
   <div class="custom-words page">
-    <div class="toolbar">
-      <div class="toolbar-left">
-        <van-button size="small" icon="replay" @click="load">刷新</van-button>
-        <van-button size="small" :disabled="selectedCount===0" @click="batchCheck('enable')">启用</van-button>
-        <van-button size="small" :disabled="selectedCount===0" @click="batchCheck('disable')">停用</van-button>
-        <van-button size="small" :disabled="selectedCount===0" @click="openExport">导出</van-button>
+    <!-- 工具栏 -->
+    <div class="toolbar-card">
+      <div class="toolbar-row">
+        <van-button size="small" plain hairline type="primary" icon="plus" @click="groupVisible = true">新增组</van-button>
+        <van-button size="small" plain hairline icon="down" @click="openImportCode">导入</van-button>
+        <span class="toolbar-spacer" />
+        <van-button size="small" plain hairline icon="replay" @click="load">刷新</van-button>
       </div>
-      <div class="toolbar-right">
-        <van-button size="small" @click="openImportCode">导入</van-button>
-        <van-button size="small" type="primary" icon="plus" @click="groupVisible = true">新增组</van-button>
+      <div class="toolbar-row batch-row">
+        <span class="batch-count">已选 {{ selectedCount }} 项</span>
+        <van-button size="small" plain hairline type="success" :disabled="selectedCount === 0" @click="batchCheck('enable')">启用</van-button>
+        <van-button size="small" plain hairline type="warning" :disabled="selectedCount === 0" @click="batchCheck('disable')">停用</van-button>
+        <van-button size="small" plain hairline type="primary" icon="upgrade" :disabled="selectedCount === 0" @click="openExport">导出</van-button>
       </div>
     </div>
 
-    <van-loading v-if="loading" size="20" style="padding:40px;text-align:center" />
+    <van-loading v-if="loading" size="24" class="page-loading" />
     <van-empty v-else-if="groups.length === 0" description="未配置任何识别词组" />
 
     <div v-else class="group-list">
-      <div v-for="group in groups" :key="group.id" class="group-card van-hairline--bottom">
+      <div v-for="group in groups" :key="group.id" class="group-card">
         <div class="group-header" @click="toggleGroup(group.id)">
-          <van-icon :name="expandedGroups.has(group.id) ? 'arrow-down' : 'arrow'"/>
-          <a v-if="group.link" :href="group.link" target="_blank" class="group-name">{{ group.name }}</a>
-          <span v-else class="group-name">{{ group.name }}</span>
-          <van-tag v-if="group.type === 1" size="small" type="primary" plain>电影</van-tag>
-          <van-tag v-else size="small" type="warning" plain>电视剧</van-tag>
-          <span class="word-count">{{ group.words.length }}条</span>
+          <div class="group-icon" :class="group.type === 1 ? 'movie' : 'tv'">
+            <van-icon :name="group.type === 1 ? 'video-o' : 'play-circle-o'" size="18" />
+          </div>
+          <div class="group-info">
+            <a v-if="group.link" :href="group.link" target="_blank" class="group-name" @click.stop>{{ group.name }}</a>
+            <span v-else class="group-name">{{ group.name }}</span>
+            <div class="group-sub">
+              <span class="group-sub-type" :class="group.type === 1 ? 'movie' : 'tv'">{{ group.type === 1 ? '电影' : '电视剧' }}</span>
+              <span>{{ group.words.length }} 条</span>
+            </div>
+          </div>
+          <van-icon name="arrow-down" class="group-arrow" :class="{ expanded: expandedGroups.has(group.id) }" />
         </div>
+
         <div v-if="expandedGroups.has(group.id)" class="group-body">
-          <div class="group-select-all">
+          <div class="select-all-row">
             <van-checkbox
               :model-value="group.words.length > 0 && group.words.every(w => selectedIds.has(`${group.id}_${w.id}`))"
-              shape="square"
               @update:model-value="(v: boolean) => selectGroupAll(group, v)"
             >全选</van-checkbox>
+            <span v-if="groupSelectedCount(group) > 0" class="selected-hint">
+              已选 {{ groupSelectedCount(group) }} / {{ group.words.length }}
+            </span>
           </div>
-          <div v-for="w in group.words" :key="w.id" class="word-row">
+
+          <div
+            v-for="w in group.words" :key="w.id"
+            class="word-card" :class="{ selected: selectedIds.has(`${group.id}_${w.id}`) }"
+          >
             <van-checkbox
               :model-value="selectedIds.has(`${group.id}_${w.id}`)"
-              shape="square"
               @update:model-value="() => toggleSelect(`${group.id}_${w.id}`)"
               class="word-checkbox"
             />
             <div class="word-content" @click="openEdit(w, group)">
-              <div class="word-main">
-                <van-tag :type="w.enabled ? 'success' : 'danger'" size="small" class="word-status">{{ w.enabled ? '启用' : '停用' }}</van-tag>
-                <van-tag size="small" plain class="word-type-tag">{{ wordTypeLabel(w.type) }}</van-tag>
-                <van-tag v-if="w.regex" size="small" plain>RegEx</van-tag>
+              <div class="word-tags">
+                <span class="mini-tag" :class="w.enabled ? 'on' : 'off'">{{ w.enabled ? '启用' : '停用' }}</span>
+                <span class="mini-tag type">{{ wordTypeLabel(w.type) }}</span>
+                <span v-if="w.regex" class="mini-tag regex">RegEx</span>
+                <span v-if="w.season !== -2" class="mini-tag season">{{ seasonLabel(w.season) }}</span>
               </div>
-              <div class="word-detail">
-                <span v-if="w.replaced" class="word-field"><label>被替换:</label>{{ w.replaced }}</span>
-                <span v-if="w.replace" class="word-field"><label>替换:</label>{{ w.replace }}</span>
+              <div class="word-fields">
+                <div v-if="w.replaced" class="word-field">
+                  <span class="wf-label">被替换</span><span class="wf-value">{{ w.replaced }}</span>
+                </div>
+                <div v-if="w.replace" class="word-field">
+                  <span class="wf-label">替换为</span><span class="wf-value">{{ w.replace }}</span>
+                </div>
+                <div v-if="w.front" class="word-field">
+                  <span class="wf-label">前定位</span><span class="wf-value">{{ w.front }}</span>
+                </div>
+                <div v-if="w.back" class="word-field">
+                  <span class="wf-label">后定位</span><span class="wf-value">{{ w.back }}</span>
+                </div>
+                <div v-if="w.offset" class="word-field">
+                  <span class="wf-label">偏移</span><span class="wf-value">{{ w.offset }}</span>
+                </div>
               </div>
-              <div v-if="w.front || w.back || w.offset" class="word-detail">
-                <span v-if="w.front" class="word-field"><label>前:</label>{{ w.front }}</span>
-                <span v-if="w.back" class="word-field"><label>后:</label>{{ w.back }}</span>
-                <span v-if="w.offset" class="word-field"><label>偏移:</label>{{ w.offset }}</span>
-              </div>
-              <div v-if="w.season !== -2 || w.help" class="word-detail">
-                <van-tag v-if="w.season !== -2" size="small" type="warning" plain>{{ seasonLabel(w.season) }}</van-tag>
-                <span v-if="w.help" class="word-help">{{ w.help }}</span>
-              </div>
+              <div v-if="w.help" class="word-help">{{ w.help }}</div>
             </div>
-            <van-icon name="delete" class="word-delete" @click="deleteWord(w)" />
+            <div class="word-delete" @click="deleteWord(w)">
+              <van-icon name="delete-o" size="15" />
+            </div>
           </div>
+
           <div class="group-actions">
-            <van-button size="small" icon="plus" type="primary" plain @click="openAdd(group)">新增识别词</van-button>
-            <van-button v-if="group.id !== -1" size="small" plain type="danger" @click="deleteGroup(group)">删除组</van-button>
+            <van-button size="small" plain hairline type="primary" icon="plus" @click="openAdd(group)">新增识别词</van-button>
+            <van-button v-if="group.id !== -1" size="small" plain hairline type="danger" icon="delete-o" @click="deleteGroup(group)">删除组</van-button>
           </div>
         </div>
       </div>
     </div>
 
-    <van-popup v-model:show="editVisible" position="bottom" :style="{ height: '85%' }" closeable :title="editTitle">
-      <van-form @submit="submitWord" style="padding:12px 16px 24px">
-        <van-field name="type" label="类型">
-          <template #input>
-            <van-radio-group v-model="form.type" direction="horizontal" class="type-radio-group">
-              <van-radio v-for="t in WORD_TYPES" :key="t.value" :name="t.value" shape="square">{{ t.label }}</van-radio>
-            </van-radio-group>
+    <!-- 新增 / 编辑识别词 -->
+    <van-popup v-model:show="editVisible" position="bottom" round teleport="body" class="sheet sheet-tall">
+      <van-form class="sheet-form" @submit="submitWord">
+        <div class="sheet-header">
+          <span class="sheet-title">{{ editTitle }}</span>
+          <van-icon name="cross" class="sheet-close" @click="editVisible = false" />
+        </div>
+        <div class="sheet-body">
+          <div class="section-label">识别词</div>
+          <van-cell-group inset class="form-group">
+            <van-field
+              label="类型" is-link readonly
+              :model-value="wordTypeLabel(form.type)"
+              placeholder="请选择"
+              @click="showWordTypePicker = true"
+            />
+            <van-field
+              v-if="form.type !== 4"
+              v-model="form.new_replaced"
+              label="被替换词"
+              placeholder="被替换的文本"
+              :rules="form.type !== 4 ? [{ required: true, message: '请填写被替换词' }] : []"
+            />
+            <van-field
+              v-if="form.type === 2 || form.type === 3"
+              v-model="form.new_replace"
+              label="替换词"
+              placeholder="替换为"
+              :rules="(form.type === 2 || form.type === 3) ? [{ required: true, message: '请填写替换词' }] : []"
+            />
+          </van-cell-group>
+
+          <template v-if="form.type === 3 || form.type === 4">
+            <div class="section-label">集偏移</div>
+            <van-cell-group inset class="form-group">
+              <van-field v-model="form.new_front" label="前定位词" placeholder="如 第" />
+              <van-field v-model="form.new_back" label="后定位词" placeholder="如 話" />
+              <van-field v-model="form.new_offset" label="偏移集数" placeholder="如 -10" />
+            </van-cell-group>
           </template>
-        </van-field>
 
-        <van-field v-if="form.type !== 4" v-model="form.new_replaced" label="被替换词" placeholder="被替换的文本" :rules="form.type !== 4 ? [{ required: true, message: '请填写被替换词' }] : []" />
-        <van-field v-if="form.type === 2 || form.type === 3" v-model="form.new_replace" label="替换词" placeholder="替换为" :rules="(form.type === 2 || form.type === 3) ? [{ required: true, message: '请填写替换词' }] : []" />
-
-        <template v-if="form.type === 3 || form.type === 4">
-          <van-field v-model="form.new_front" label="前定位词" placeholder="如 第" />
-          <van-field v-model="form.new_back" label="后定位词" placeholder="如 話" />
-          <van-field v-model="form.new_offset" label="偏移集数" placeholder="如 -10" />
-        </template>
-
-        <van-field name="regex" label="正则表达式">
-          <template #input>
-            <van-radio-group v-model="form.regex" direction="horizontal">
-              <van-radio :name="1" shape="square">使用</van-radio>
-              <van-radio :name="0" shape="square">不使用</van-radio>
-            </van-radio-group>
-          </template>
-        </van-field>
-
-        <van-field v-if="form.group_type === 2" name="season" label="季">
-          <template #input>
-            <van-radio-group v-model="form.season" direction="horizontal">
-              <van-radio :name="-1" shape="square">全部</van-radio>
-            </van-radio-group>
-          </template>
-        </van-field>
-
-        <van-field name="enabled" label="状态">
-          <template #input>
-            <van-radio-group v-model="form.enabled" direction="horizontal">
-              <van-radio :name="1" shape="square">启用</van-radio>
-              <van-radio :name="0" shape="square">停用</van-radio>
-            </van-radio-group>
-          </template>
-        </van-field>
-
-        <van-field v-model="form.new_help" label="备注" placeholder="备注说明" />
-
-        <div style="margin-top:16px">
-          <van-button block type="primary" native-type="submit">保存</van-button>
+          <div class="section-label">选项</div>
+          <van-cell-group inset class="form-group">
+            <van-cell title="使用正则">
+              <template #right-icon>
+                <van-switch v-model="form.regex" :active-value="1" :inactive-value="0" size="20px" />
+              </template>
+            </van-cell>
+            <van-field
+              v-if="form.group_type === 2"
+              label="季" is-link readonly
+              :model-value="seasonFieldText"
+              placeholder="请选择"
+              @click="showSeasonPicker = true"
+            />
+            <van-cell title="启用状态">
+              <template #right-icon>
+                <van-switch v-model="form.enabled" :active-value="1" :inactive-value="0" size="20px" />
+              </template>
+            </van-cell>
+            <van-field v-model="form.new_help" label="备注" placeholder="备注说明" />
+          </van-cell-group>
+        </div>
+        <div class="sheet-footer">
+          <van-button block round type="primary" native-type="submit">保存</van-button>
         </div>
       </van-form>
     </van-popup>
 
-    <van-popup v-model:show="groupVisible" position="center" :style="{ width: '85%' }" closeable title="新增识别词组">
-      <van-form @submit="addGroup" style="padding:16px">
-        <van-field v-model="groupForm.tmdb_id" label="TMDB ID" placeholder="TMDB的编号" :rules="[{ required: true, message: '请填写TMDB ID' }]" />
-        <van-field name="tmdb_type" label="类型">
-          <template #input>
-            <van-radio-group v-model="groupForm.tmdb_type" direction="horizontal">
-              <van-radio name="movie" shape="square">电影</van-radio>
-              <van-radio name="tv" shape="square">电视剧</van-radio>
-            </van-radio-group>
-          </template>
-        </van-field>
-        <div style="margin-top:16px"><van-button block type="primary" native-type="submit">确定</van-button></div>
+    <!-- 类型选择器 -->
+    <van-popup v-model:show="showWordTypePicker" position="bottom" round teleport="body">
+      <van-picker
+        title="选择类型"
+        :columns="WORD_TYPES.map(t => ({ text: t.label, value: t.value }))"
+        :default-index="WORD_TYPES.findIndex(t => t.value === form.type)"
+        @confirm="({ selectedOptions }) => { form.type = selectedOptions[0].value; showWordTypePicker = false }"
+        @cancel="showWordTypePicker = false"
+      />
+    </van-popup>
+
+    <!-- 季选择器 -->
+    <van-popup v-model:show="showSeasonPicker" position="bottom" round teleport="body">
+      <van-picker
+        title="选择季"
+        :columns="SEASON_OPTIONS"
+        :default-index="Math.max(0, SEASON_OPTIONS.findIndex(s => s.value === form.season))"
+        @confirm="({ selectedOptions }) => { form.season = selectedOptions[0].value; showSeasonPicker = false }"
+        @cancel="showSeasonPicker = false"
+      />
+    </van-popup>
+
+    <!-- 新增识别词组 -->
+    <van-popup v-model:show="groupVisible" position="bottom" round teleport="body" class="sheet">
+      <van-form class="sheet-form" @submit="addGroup">
+        <div class="sheet-header">
+          <span class="sheet-title">新增识别词组</span>
+          <van-icon name="cross" class="sheet-close" @click="groupVisible = false" />
+        </div>
+        <div class="sheet-body">
+          <div class="sheet-tip">根据 TMDB ID 创建识别词组，用于该媒体的自定义识别规则</div>
+          <van-cell-group inset class="form-group">
+            <van-field
+              v-model="groupForm.tmdb_id"
+              label="TMDB ID"
+              placeholder="TMDB 的编号"
+              type="number"
+              :rules="[{ required: true, message: '请填写TMDB ID' }]"
+            />
+            <van-field
+              label="类型" is-link readonly
+              :model-value="GROUP_TYPE_OPTIONS.find(o => o.value === groupForm.tmdb_type)?.text"
+              placeholder="请选择"
+              @click="showGroupTypePicker = true"
+            />
+          </van-cell-group>
+        </div>
+        <div class="sheet-footer">
+          <van-button block round type="primary" native-type="submit">确定</van-button>
+        </div>
       </van-form>
     </van-popup>
 
-    <van-popup v-model:show="exportNoteVisible" position="bottom" :style="{ height: '45%' }" closeable title="导出自定义识别词">
-      <van-form @submit="doExport" style="padding:16px">
-        <van-field v-model="exportNote" label="分享备注" type="textarea" rows="4" placeholder="应用的资源标题/文件名/站点等" :rules="[{ required: true, message: '请填写分享备注' }]" />
-        <div style="margin-top:16px"><van-button block type="primary" native-type="submit">生成分享代码</van-button></div>
+    <!-- 组类型选择器 -->
+    <van-popup v-model:show="showGroupTypePicker" position="bottom" round teleport="body">
+      <van-picker
+        title="选择类型"
+        :columns="GROUP_TYPE_OPTIONS"
+        :default-index="GROUP_TYPE_OPTIONS.findIndex(o => o.value === groupForm.tmdb_type)"
+        @confirm="({ selectedOptions }) => { groupForm.tmdb_type = selectedOptions[0].value; showGroupTypePicker = false }"
+        @cancel="showGroupTypePicker = false"
+      />
+    </van-popup>
+
+    <!-- 导出：填写分享备注 -->
+    <van-popup v-model:show="exportNoteVisible" position="bottom" round teleport="body" class="sheet">
+      <van-form class="sheet-form" @submit="doExport">
+        <div class="sheet-header">
+          <span class="sheet-title">导出自定义识别词</span>
+          <van-icon name="cross" class="sheet-close" @click="exportNoteVisible = false" />
+        </div>
+        <div class="sheet-body">
+          <div class="sheet-tip">已选 {{ selectedCount }} 项识别词，导出后生成分享代码</div>
+          <van-cell-group inset class="form-group">
+            <van-field
+              v-model="exportNote"
+              label="分享备注"
+              type="textarea"
+              rows="4"
+              autosize
+              placeholder="应用的资源标题/文件名/站点等"
+              :rules="[{ required: true, message: '请填写分享备注' }]"
+            />
+          </van-cell-group>
+        </div>
+        <div class="sheet-footer">
+          <van-button block round type="primary" native-type="submit">生成分享代码</van-button>
+        </div>
       </van-form>
     </van-popup>
 
-    <van-popup v-model:show="exportCodeVisible" position="center" :style="{ width: '88%', maxHeight: '70%' }" closeable title="导出自定义识别词">
-      <div style="padding:16px">
+    <!-- 导出：分享代码 -->
+    <van-popup v-model:show="exportCodeVisible" position="bottom" round teleport="body" class="sheet">
+      <div class="sheet-header">
+        <span class="sheet-title">分享代码</span>
+        <van-icon name="cross" class="sheet-close" @click="exportCodeVisible = false" />
+      </div>
+      <div class="sheet-body">
+        <div class="sheet-tip">将下方代码分享给其他用户，对方可通过「导入」使用</div>
         <pre class="code-block">{{ exportCode }}</pre>
-        <van-button block type="primary" style="margin-top:12px" @click="copyExport">复制</van-button>
+      </div>
+      <div class="sheet-footer">
+        <van-button block round type="primary" @click="copyExport">复制分享代码</van-button>
       </div>
     </van-popup>
 
-    <van-popup v-model:show="importCodeVisible" position="bottom" :style="{ height: '55%' }" closeable title="导入自定义识别词">
-      <van-form @submit="analyseImport" style="padding:16px">
-        <van-field v-model="importCode" label="分享代码" type="textarea" rows="6" placeholder="在此处粘贴分享的规则内容" :rules="[{ required: true, message: '请粘贴分享代码' }]" />
-        <div style="margin-top:16px"><van-button block type="primary" native-type="submit" :loading="importAnalysing">解析分享代码</van-button></div>
+    <!-- 导入：粘贴分享代码 -->
+    <van-popup v-model:show="importCodeVisible" position="bottom" round teleport="body" class="sheet">
+      <van-form class="sheet-form" @submit="analyseImport">
+        <div class="sheet-header">
+          <span class="sheet-title">导入自定义识别词</span>
+          <van-icon name="cross" class="sheet-close" @click="importCodeVisible = false" />
+        </div>
+        <div class="sheet-body">
+          <div class="sheet-tip">粘贴其他用户分享的识别词代码，解析后可选择导入</div>
+          <van-cell-group inset class="form-group">
+            <van-field
+              v-model="importCode"
+              label="分享代码"
+              type="textarea"
+              rows="6"
+              placeholder="在此处粘贴分享的规则内容"
+              :rules="[{ required: true, message: '请粘贴分享代码' }]"
+            />
+          </van-cell-group>
+        </div>
+        <div class="sheet-footer">
+          <van-button block round type="primary" native-type="submit" :loading="importAnalysing">解析分享代码</van-button>
+        </div>
       </van-form>
     </van-popup>
 
-    <van-popup v-model:show="importAnalyseVisible" position="bottom" :style="{ height: '85%' }" closeable title="导入自定义识别词">
-      <div style="padding:0 16px 24px;overflow-y:auto;max-height:calc(100% - 50px)">
+    <!-- 导入：解析结果选择 -->
+    <van-popup v-model:show="importAnalyseVisible" position="bottom" round teleport="body" class="sheet sheet-tall">
+      <div class="sheet-header">
+        <span class="sheet-title">选择导入识别词</span>
+        <van-icon name="cross" class="sheet-close" @click="importAnalyseVisible = false" />
+      </div>
+      <div class="sheet-body">
         <div v-if="importAnalyseNote" class="import-note">
           <div class="import-note-label">应用说明</div>
           <pre class="import-note-text">{{ importAnalyseNote }}</pre>
         </div>
-        <div v-for="g in importAnalyseGroups" :key="g.id" class="import-group">
+        <div v-for="g in importAnalyseGroups" :key="g.id" class="group-card import-group-card">
           <div class="import-group-header">
             <a v-if="g.link" :href="g.link" target="_blank" class="import-group-name">{{ g.name }}</a>
             <span v-else class="import-group-name">{{ g.name }}</span>
             <van-checkbox
               :model-value="g.words.length > 0 && g.words.every(w => importAnalyseSelected.has(`${g.id}_${w.id}`))"
-              shape="square"
               @update:model-value="(v: boolean) => selectImportGroupAll(g, v)"
-            />
+            >全选</van-checkbox>
           </div>
-          <div v-for="w in g.words" :key="w.id" class="word-row">
+          <div
+            v-for="w in g.words" :key="w.id"
+            class="word-card" :class="{ selected: importAnalyseSelected.has(`${g.id}_${w.id}`) }"
+            @click="toggleImportSelect(`${g.id}_${w.id}`)"
+          >
             <van-checkbox
               :model-value="importAnalyseSelected.has(`${g.id}_${w.id}`)"
-              shape="square"
-              @update:model-value="() => toggleImportSelect(`${g.id}_${w.id}`)"
-              class="word-checkbox"
+              class="word-checkbox word-checkbox-static"
             />
             <div class="word-content">
-              <div class="word-main">
-                <van-tag v-if="w.regex" size="small" plain>RegEx</van-tag>
+              <div class="word-tags">
+                <span v-if="w.regex" class="mini-tag regex">RegEx</span>
+                <span v-if="w.season === -1" class="mini-tag season">全部季</span>
+                <span v-else-if="w.season !== -2" class="mini-tag season">第{{ w.season }}季</span>
               </div>
-              <div class="word-detail">
-                <span v-if="w.replaced" class="word-field"><label>被替换:</label>{{ w.replaced }}</span>
-                <span v-if="w.replace" class="word-field"><label>替换:</label>{{ w.replace }}</span>
+              <div class="word-fields">
+                <div v-if="w.replaced" class="word-field">
+                  <span class="wf-label">被替换</span><span class="wf-value">{{ w.replaced }}</span>
+                </div>
+                <div v-if="w.replace" class="word-field">
+                  <span class="wf-label">替换为</span><span class="wf-value">{{ w.replace }}</span>
+                </div>
+                <div v-if="w.front" class="word-field">
+                  <span class="wf-label">前定位</span><span class="wf-value">{{ w.front }}</span>
+                </div>
+                <div v-if="w.back" class="word-field">
+                  <span class="wf-label">后定位</span><span class="wf-value">{{ w.back }}</span>
+                </div>
+                <div v-if="w.offset" class="word-field">
+                  <span class="wf-label">偏移</span><span class="wf-value">{{ w.offset }}</span>
+                </div>
               </div>
-              <div v-if="w.front || w.back || w.offset" class="word-detail">
-                <span v-if="w.front" class="word-field"><label>前:</label>{{ w.front }}</span>
-                <span v-if="w.back" class="word-field"><label>后:</label>{{ w.back }}</span>
-                <span v-if="w.offset" class="word-field"><label>偏移:</label>{{ w.offset }}</span>
-              </div>
-              <div v-if="w.season || w.help" class="word-detail">
-                <van-tag v-if="w.season === -1" size="small" type="warning" plain>全部</van-tag>
-                <van-tag v-else-if="w.season !== -2" size="small" type="warning" plain>第{{ w.season }}季</van-tag>
-                <span v-if="w.help" class="word-help">{{ w.help }}</span>
-              </div>
+              <div v-if="w.help" class="word-help">{{ w.help }}</div>
             </div>
           </div>
         </div>
-        <div style="margin-top:16px">
-          <van-button block type="primary" :loading="importSaving" @click="doImport">导入</van-button>
-        </div>
+      </div>
+      <div class="sheet-footer">
+        <span class="import-count">已选 {{ importAnalyseSelected.size }} 项</span>
+        <van-button round type="primary" class="grow" :loading="importSaving" @click="doImport">确认导入</van-button>
       </div>
     </van-popup>
   </div>
 </template>
 
 <style scoped>
-.toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.toolbar-left,
-.toolbar-right {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.group-list {
-  padding: 0 12px 12px;
+.custom-words {
+  padding: 8px 10px;
   display: flex;
   flex-direction: column;
+  gap: 10px;
+}
+
+/* ---- 工具栏 ---- */
+.toolbar-card {
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(100, 101, 102, 0.08);
+  overflow: hidden;
+}
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+}
+.toolbar-row + .toolbar-row { border-top: 1px solid #f2f3f5; }
+.toolbar-spacer { flex: 1; }
+.batch-row { padding-top: 8px; padding-bottom: 8px; }
+.batch-count { flex: 1; font-size: 12px; color: #969799; }
+.page-loading { display: block; margin: 60px auto; }
+
+/* ---- 识别词组 ---- */
+.group-list {
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 .group-card {
   background: #fff;
-  border-radius: 8px;
-  margin-bottom: 10px;
+  border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(100, 101, 102, 0.08);
   overflow: hidden;
 }
 .group-header {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
   padding: 12px;
   cursor: pointer;
   user-select: none;
-  background: var(--van-background-2, #f7f8fa);
 }
+.group-header:active { background: #f7f8fa; }
+.group-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.group-icon.movie { background: #e8f2ff; color: #1989fa; }
+.group-icon.tv { background: #fff3e8; color: #ff976a; }
+.group-info { flex: 1; min-width: 0; }
 .group-name {
-  font-weight: 600;
   font-size: 14px;
-  color: var(--van-primary-color, #1989fa);
+  font-weight: 600;
+  color: #323233;
   text-decoration: none;
-  flex: 1;
-  min-width: 0;
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.word-count {
-  font-size: 12px;
-  color: var(--van-text-color-3, #999);
-  margin-left: auto;
+a.group-name { color: var(--van-primary-color); }
+.group-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 11px;
+  color: #969799;
 }
+.group-sub-type.movie { color: #1989fa; }
+.group-sub-type.tv { color: #ff976a; }
+.group-arrow {
+  color: #c8c9cc;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+.group-arrow.expanded { transform: rotate(180deg); }
 .group-body {
+  border-top: 1px solid #f2f3f5;
   padding: 8px 12px 12px;
 }
-.group-select-all {
-  padding: 4px 0 6px;
-}
-.word-row {
+.select-all-row {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--van-border-color, #eee);
-}
-.word-row:last-child {
-  border-bottom: none;
-}
-.word-checkbox {
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-.word-content {
-  flex: 1;
-  min-width: 0;
-  cursor: pointer;
-}
-.word-main {
-  display: flex;
-  gap: 6px;
   align-items: center;
-  margin-bottom: 4px;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  padding: 2px 0 8px;
 }
-.word-detail {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  font-size: 12px;
-  color: var(--van-text-color-2, #666);
-  margin-top: 2px;
-}
-.word-field label {
-  color: var(--van-text-color-3, #999);
-  margin-right: 2px;
-}
-.word-field {
-  word-break: break-all;
-}
-.word-help {
-  color: var(--van-text-color-3, #999);
-  font-style: italic;
-}
-.word-delete {
-  flex-shrink: 0;
-  color: var(--van-danger-color, #ee0a24);
-  font-size: 18px;
-  padding: 4px;
-  margin-top: 2px;
-}
-.word-status {
-  flex-shrink: 0;
-}
-.word-type-tag {
-  flex-shrink: 0;
-}
+.selected-hint { font-size: 11px; color: #969799; }
 .group-actions {
   display: flex;
   gap: 8px;
-  padding-top: 10px;
-  flex-wrap: wrap;
+  justify-content: flex-end;
+  padding-top: 4px;
 }
-.type-radio-group {
-  flex-wrap: wrap;
-  gap: 4px;
+
+/* ---- 识别词条目 ---- */
+.word-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: #f7f8fa;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 10px;
+  margin-bottom: 8px;
 }
-.code-block {
-  background: var(--van-background-2, #f7f8fa);
-  padding: 12px;
+.word-card.selected { background: #e8f2ff; border-color: #c9e0fa; }
+.word-checkbox { flex-shrink: 0; margin-top: 2px; }
+.word-checkbox-static { pointer-events: none; }
+.word-content { flex: 1; min-width: 0; cursor: pointer; }
+.word-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.mini-tag {
+  font-size: 10px;
   border-radius: 4px;
+  padding: 2px 6px;
+  line-height: 1.4;
+}
+.mini-tag.on { background: #e8f8ef; color: #07c160; }
+.mini-tag.off { background: #fdeeee; color: #ee0a24; }
+.mini-tag.type { background: #e8f2ff; color: #1989fa; }
+.mini-tag.regex { background: #f3eafd; color: #7232dd; }
+.mini-tag.season { background: #fff3e8; color: #ff976a; }
+.word-fields { display: flex; flex-direction: column; gap: 4px; }
+.word-field { display: flex; align-items: flex-start; gap: 6px; font-size: 12px; min-width: 0; }
+.wf-label {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: #969799;
+  background: #fff;
+  border: 1px solid #ebedf0;
+  border-radius: 4px;
+  padding: 1px 5px;
+  line-height: 1.5;
+}
+.wf-value { color: #323233; word-break: break-all; line-height: 1.5; }
+.word-help {
+  font-size: 11px;
+  color: #969799;
+  font-style: italic;
+  margin-top: 6px;
+  word-break: break-all;
+}
+.word-delete {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #fff;
+  color: #ee0a24;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(100, 101, 102, 0.12);
+  cursor: pointer;
+}
+.word-delete:active { background: #fdeeee; }
+
+/* ---- 底部弹层通用 ---- */
+.sheet {
+  max-width: 640px;
+  right: 0;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+.sheet-tall { height: 88vh; height: 88dvh; }
+.sheet-form {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.sheet-header {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 44px 12px;
+  border-bottom: 1px solid #f2f3f5;
+  background: #fff;
+}
+.sheet-title { font-size: 16px; font-weight: 600; color: #323233; }
+.sheet-close {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #969799;
+  background: #f2f3f5;
+  border-radius: 50%;
+  font-size: 16px;
+  cursor: pointer;
+}
+.sheet-close:active { background: #e8eaee; }
+.sheet-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px;
+  background: #f7f8fa;
+}
+.sheet-footer {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  background: #fff;
+  border-top: 1px solid #f2f3f5;
+}
+.sheet-footer .grow { flex: 1; }
+.sheet-tip {
+  font-size: 12px;
+  color: #969799;
+  margin: 0 4px 10px;
+  word-break: break-all;
+  line-height: 1.5;
+}
+.section-label {
+  font-size: 12px;
+  color: #969799;
+  font-weight: 500;
+  margin: 2px 4px 8px;
+}
+.form-group { margin: 0 0 14px; border-radius: 12px; overflow: hidden; }
+
+/* ---- 分享代码 ---- */
+.code-block {
+  margin: 0;
+  background: #2b2f36;
+  color: #e6edf3;
+  padding: 14px;
+  border-radius: 10px;
   white-space: pre-wrap;
   word-break: break-all;
-  max-height: 40vh;
+  max-height: 46vh;
   overflow: auto;
   font-size: 12px;
   line-height: 1.6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
+
+/* ---- 导入 ---- */
 .import-note {
-  margin-bottom: 12px;
+  background: #fff;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
 }
 .import-note-label {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
-  color: var(--van-text-color-3, #999);
+  color: #969799;
   margin-bottom: 4px;
 }
 .import-note-text {
-  background: var(--van-background-2, #f7f8fa);
-  padding: 8px 12px;
-  border-radius: 4px;
+  margin: 0;
   font-size: 12px;
+  color: #646566;
   white-space: pre-wrap;
   word-break: break-all;
-  margin: 0;
+  line-height: 1.6;
 }
-.import-group {
-  margin-bottom: 12px;
-}
+.import-group-card { margin-bottom: 10px; }
 .import-group-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 0;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #f2f3f5;
 }
 .import-group-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
   font-weight: 600;
-  font-size: 14px;
-  color: var(--van-primary-color, #1989fa);
+  color: var(--van-primary-color);
   text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+.import-group-card .word-card { margin: 8px 12px 0; }
+.import-group-card .word-card:last-child { margin-bottom: 12px; }
+.import-count { font-size: 12px; color: #969799; flex-shrink: 0; }
 </style>
