@@ -33,17 +33,11 @@ interface HardlinkFile {
 
 type NameTestResult = NameTestData | { name: string }
 
-const chipOrder = ['name', 'year', 'season_episode', 'title', 'tmdbid', 'restype', 'pix', 'video_codec', 'audio_codec', 'team']
+const techChipOrder = ['restype', 'pix', 'video_codec', 'audio_codec', 'team'] as const
+type TechChipKey = (typeof techChipOrder)[number]
 
-const chipLabels: Record<string, string> = {
-  name: '名称', year: '年份', season_episode: '季集', title: '标题',
-  tmdbid: 'TMDB ID', restype: '质量', pix: '分辨率',
-  video_codec: '视频编码', audio_codec: '音频编码', team: '制作组'
-}
-
-const chipTypes: Record<string, string> = {
-  name: 'warning', year: 'warning', season_episode: 'warning',
-  title: 'success', tmdbid: 'success', team: 'primary'
+const chipLabels: Record<TechChipKey, string> = {
+  restype: '质量', pix: '分辨率', video_codec: '视频编码', audio_codec: '音频编码', team: '制作组'
 }
 
 const clickableChips = new Set(['title', 'tmdbid', 'name', 'season_episode'])
@@ -60,9 +54,14 @@ const showTree = ref(false)
 const nameTestResults = reactive<Record<string, NameTestResult>>({})
 const nameTestLoading = reactive<Record<string, boolean>>({})
 
-// Action sheet for rename/delete
+// Action sheet for rename/delete/hardlink
 const showMoreActions = ref(false)
 const activeFile = ref<FileItem | null>(null)
+const moreActions = [
+  { name: '重命名', icon: 'edit' },
+  { name: '查找硬链接', icon: 'link-o' },
+  { name: '删除', icon: 'delete-o', color: '#ee0a24' },
+]
 
 // Transfer dialog
 const showTransfer = ref(false)
@@ -147,6 +146,20 @@ function openSyncmodPicker() {
   })
 }
 
+const TYPE_OPTIONS = [
+  { text: '电影', value: 'MOV' },
+  { text: '电视剧', value: 'TV' },
+  { text: '动漫', value: 'ANIME' },
+]
+const showTypePicker = ref(false)
+
+function openTypePicker() {
+  showTransfer.value = false
+  nextTick(() => {
+    showTypePicker.value = true
+  })
+}
+
 const showTmdbSearch = ref(false)
 const tmdbSearchKeyword = ref('')
 const tmdbSearchResults = ref<TmdbSearchItem[]>([])
@@ -164,6 +177,11 @@ function getParentDir(p: string) {
   const idx = p.lastIndexOf('/')
   if (idx <= 0) return '/'
   return p.slice(0, idx)
+}
+
+function baseName(p: string): string {
+  const idx = p.lastIndexOf('/')
+  return idx >= 0 ? p.slice(idx + 1) : p
 }
 
 onMounted(async () => {
@@ -260,6 +278,32 @@ function isNameTestResult(d: NameTestResult): d is NameTestData {
   return 'title' in d
 }
 
+const parsedResults = computed(() => {
+  const out: Record<string, NameTestData> = {}
+  for (const [k, v] of Object.entries(nameTestResults)) {
+    if (isNameTestResult(v)) out[k] = v
+  }
+  return out
+})
+
+function hasTechInfo(d: NameTestData): boolean {
+  return techChipOrder.some(k => !!d[k])
+}
+
+function mediaTypeLabel(t?: string): string {
+  if (t === 'MOV') return '电影'
+  if (t === 'TV') return '电视剧'
+  if (t === 'ANIME') return '动漫'
+  return t || ''
+}
+
+function mediaTypeColor(t?: string): string {
+  if (t === '电影') return '#1989fa'
+  if (t === '电视剧') return '#07c160'
+  if (t === '动漫') return '#ff976a'
+  return '#969799'
+}
+
 function handleChipClick(key: string, f: FileItem) {
   if (!clickableChips.has(key)) return
   const result = nameTestResults[f.path]
@@ -267,8 +311,9 @@ function handleChipClick(key: string, f: FileItem) {
   if (key === 'title') {
     navigator.clipboard?.writeText(result.title).then(() => showToast('已复制标题')).catch(() => {})
   } else if (key === 'tmdbid') {
-    const v = String(result.tmdbid)
-    navigator.clipboard?.writeText(v).then(() => showToast('已复制 TMDB ID')).catch(() => {})
+    const base = result.type === '电影' ? 'movie' : 'tv'
+    const url = `https://www.themoviedb.org/${base}/${result.tmdbid}`
+    window.open(url, '_blank')
   } else if (key === 'name') {
     const url = `https://www.themoviedb.org/search?query=${encodeURIComponent(result.name)}`
     window.open(url, '_blank')
@@ -337,6 +382,14 @@ function onFileClick(f: FileItem) {
 function openMoreActions(f: FileItem) {
   activeFile.value = f
   showMoreActions.value = true
+}
+
+function onMoreActionSelect(index: number) {
+  const f = activeFile.value
+  if (!f) return
+  if (index === 0) doRename(f)
+  else if (index === 1) openHardlink(f)
+  else if (index === 2) doDelete(f)
 }
 
 async function doDelete(f: FileItem) {
@@ -571,263 +624,820 @@ function formatSize(s: string): string {
 
 <template>
   <div class="mediafile page">
-    <div class="toolbar">
-      <van-field v-model="pathInput" placeholder="输入目录路径" @keyup.enter="goInput">
-        <template #left-icon><van-icon name="search" @click="goInput" /></template>
-        <template #button><van-button size="small"  plain @click="goInput">前往</van-button></template>
-      </van-field>
-    </div>
+    <van-search
+      v-model="pathInput"
+      class="path-search"
+      shape="round"
+      placeholder="输入或粘贴目录路径"
+      show-action
+      @search="goInput"
+    >
+      <template #action><div class="search-action" @click="goInput">前往</div></template>
+    </van-search>
 
     <div class="breadcrumb-bar">
-      <van-icon name="arrow-left" @click="goParent" style="cursor:pointer;flex-shrink:0" />
-      <van-icon name="folder-o" @click="openTree" style="cursor:pointer;flex-shrink:0;margin-left:8px" />
+      <div class="nav-btn" @click="goParent"><van-icon name="arrow-left" /></div>
+      <div class="nav-btn" @click="openTree"><van-icon name="more-o" /></div>
       <div class="crumbs">
-        <span v-for="(cr, i) in pathCrumbs" :key="i" class="crumb" @click="goPath(cr.path)">
-          {{ cr.label }}<span v-if="i < pathCrumbs.length - 1" class="crumb-sep">/</span>
-        </span>
+        <span
+          v-for="(cr, i) in pathCrumbs" :key="i"
+          class="crumb" :class="{ current: i === pathCrumbs.length - 1 }"
+          @click="goPath(cr.path)"
+        >{{ cr.label }}<span v-if="i < pathCrumbs.length - 1" class="crumb-sep">/</span></span>
       </div>
     </div>
 
     <div class="action-bar">
-      <van-button size="small"  plain type="warning" icon="share-o" @click="openTransferDir">转移目录</van-button>
-      <van-button size="small"  plain type="primary" icon="refresh" @click="loadFiles(currentDir)">刷新</van-button>
-      <van-button size="small"  plain icon="more-o" @click="openHardlinkAll">所有硬链接</van-button>
+      <van-button size="small" plain hairline type="warning" icon="share-o" @click="openTransferDir">转移目录</van-button>
+      <van-button size="small" plain hairline type="primary" icon="refresh" @click="loadFiles(currentDir)">刷新</van-button>
+      <van-button size="small" plain hairline icon="link-o" @click="openHardlinkAll">所有硬链接</van-button>
     </div>
 
-    <van-loading v-if="loading" size="20" style="padding:40px;text-align:center" />
+    <van-loading v-if="loading" size="24" class="page-loading" />
 
     <div v-else class="file-grid">
-      <div v-for="f in files" :key="f.path" class="file-card" :class="{ 'file-card-dir': f.is_dir }">
-        <div class="file-icon" @click="onFileClick(f)">
-          <van-icon :name="f.is_dir ? 'folder-o' : 'description-o'" :color="f.is_dir ? '#ff976a' : '#1989fa'" size="26" />
-        </div>
-        <div class="file-body" @click="onFileClick(f)">
-          <div class="file-name">{{ f.name }}</div>
-          <div class="file-meta">
-            <span v-if="!f.is_dir && f.size">{{ formatSize(f.size) }}</span>
-            <span v-if="f.ext">.{{ f.ext }}</span>
+      <div v-for="f in files" :key="f.path" class="file-card">
+        <div class="file-main" @click="onFileClick(f)">
+          <div class="file-icon" :class="f.is_dir ? 'dir' : 'file'">
+            <van-icon :name="f.is_dir ? 'orders-o' : 'description-o'" size="22" />
           </div>
-          <div v-if="nameTestResults[f.path]" class="chips-row">
-            <template v-if="isNameTestResult(nameTestResults[f.path])">
-              <van-tag
-                v-for="key in chipOrder" :key="key"
-                v-show="(nameTestResults[f.path] as NameTestData)[key as keyof NameTestData]"
-                :type="(chipTypes[key] as any) || 'default'"
-                size="small"
-                :class="{ 'chip-clickable': clickableChips.has(key) }"
-                @click="handleChipClick(key, f)"
-              >
-                {{ chipLabels[key] || key }}: {{ (nameTestResults[f.path] as NameTestData)[key as keyof NameTestData] }}
-              </van-tag>
+          <div class="file-body">
+            <div class="file-name">{{ f.name }}</div>
+            <div class="file-meta">
+              <span v-if="f.is_dir">文件夹</span>
+              <span v-if="!f.is_dir && f.size">{{ formatSize(f.size) }}</span>
+              <span v-if="f.ext">.{{ f.ext }}</span>
+            </div>
+          </div>
+          <van-icon v-if="f.is_dir" name="arrow" class="dir-arrow" />
+        </div>
+
+        <template v-if="!f.is_dir">
+          <div v-if="nameTestResults[f.path]" class="nt-result">
+            <template v-if="parsedResults[f.path]">
+              <div class="nt-head">
+                <span class="nt-type" :style="{ background: mediaTypeColor(parsedResults[f.path].type) }">
+                  {{ mediaTypeLabel(parsedResults[f.path].type) || '未知' }}
+                </span>
+                <span class="nt-name" @click="handleChipClick('name', f)">{{ parsedResults[f.path].title || '未命名' }}</span>
+                <span v-if="parsedResults[f.path].year" class="nt-year">({{ parsedResults[f.path].year }})</span>
+              </div>
+              <div class="nt-chips">
+                <span
+                  v-if="parsedResults[f.path].season_episode"
+                  class="nt-chip nt-chip-link"
+                  @click="handleChipClick('season_episode', f)"
+                >
+                  <van-icon name="play-circle-o" />{{ parsedResults[f.path].season_episode }}
+                </span>
+                <span
+                  v-if="parsedResults[f.path].tmdbid"
+                  class="nt-chip nt-chip-link"
+                  @click="handleChipClick('tmdbid', f)"
+                >
+                  <van-icon name="label-o" />TMDB {{ parsedResults[f.path].tmdbid }}
+                </span>
+                <span
+                  v-if="parsedResults[f.path].title"
+                  class="nt-chip nt-chip-link"
+                  @click="handleChipClick('title', f)"
+                >
+                  <van-icon name="description-o" />复制标题
+                </span>
+              </div>
+              <div v-if="hasTechInfo(parsedResults[f.path])" class="nt-chips">
+                <span
+                  v-for="key in techChipOrder" v-show="parsedResults[f.path][key]" :key="key"
+                  class="nt-chip nt-chip-tech"
+                >
+                  {{ chipLabels[key] }} · {{ parsedResults[f.path][key] }}
+                </span>
+              </div>
             </template>
-            <van-tag v-else type="danger" size="small">
-              {{ (nameTestResults[f.path] as any).name }}
-            </van-tag>
+            <div v-else class="nt-fail">
+              <van-icon name="warning-o" />
+              <span>{{ (nameTestResults[f.path] as any).name }}</span>
+            </div>
           </div>
-        </div>
-        <div class="file-actions">
-          <template v-if="f.is_dir">
-            <van-button size="small" plain type="primary" icon="arrow" @click="loadFiles(f.path)">进入</van-button>
-          </template>
-          <template v-else>
+
+          <div class="file-actions">
             <van-button
-              size="small"  plain type="warning"
+              size="small" plain hairline type="warning" icon="aim"
               :loading="nameTestLoading[f.path]"
               @click="doNameTest(f)"
             >识别</van-button>
-            <van-button size="small"  plain type="primary" @click="openTransferFile(f)">转移</van-button>
-            <van-icon name="ellipsis" color="#c8c9cc" size="20" @click="openMoreActions(f)" />
-          </template>
-        </div>
+            <van-button size="small" plain hairline type="primary" icon="exchange" @click="openTransferFile(f)">转移</van-button>
+            <van-button size="small" plain hairline class="more-btn" icon="ellipsis" @click="openMoreActions(f)" />
+          </div>
+        </template>
       </div>
-      <van-empty v-if="files.length === 0" description="目录为空" />
+      <van-empty v-if="files.length === 0" class="grid-empty" description="目录为空" />
     </div>
 
-    <!-- More actions: rename / delete -->
-    <van-action-sheet v-model:show="showMoreActions" :title="activeFile?.name || ''">
-      <div style="padding:16px;display:flex;gap:8px">
-        <van-button  block plain @click="activeFile && doRename(activeFile)" icon="edit">重命名</van-button>
-        <van-button  block plain type="danger" @click="activeFile && doDelete(activeFile)" icon="delete">删除</van-button>
-        <van-button  block plain @click="activeFile && openHardlink(activeFile)" icon="more-o">硬链接</van-button>
-      </div>
-    </van-action-sheet>
+    <!-- 更多操作：重命名 / 硬链接 / 删除 -->
+    <van-action-sheet
+      v-model:show="showMoreActions"
+      :title="activeFile?.name || '操作'"
+      :actions="moreActions"
+      cancel-text="取消"
+      close-on-click-action
+      teleport="body"
+      @select="(_, index) => onMoreActionSelect(index)"
+    />
 
-    <van-popup v-model:show="showRename" position="bottom"  :style="{ height: '30%' }" closeable title="重命名">
-      <van-form @submit="submitRename" style="padding:16px">
-        <van-field v-model="renameNewName" label="新名称" :rules="[{ required: true }]" />
-        <van-button  block type="primary" native-type="submit">确认</van-button>
+    <!-- 重命名 -->
+    <van-popup v-model:show="showRename" position="bottom" round teleport="body" class="sheet">
+      <van-form class="sheet-form" @submit="submitRename">
+        <div class="sheet-header">
+          <span class="sheet-title">重命名</span>
+          <van-icon name="cross" class="sheet-close" @click="showRename = false" />
+        </div>
+        <div class="sheet-body">
+          <div class="sheet-tip">原名称：{{ activeFile?.name }}</div>
+          <van-cell-group inset class="form-group">
+            <van-field
+              v-model="renameNewName"
+              label="新名称"
+              placeholder="请输入新名称"
+              clearable
+              :rules="[{ required: true, message: '请输入新名称' }]"
+            />
+          </van-cell-group>
+        </div>
+        <div class="sheet-footer">
+          <van-button block round type="primary" native-type="submit">确认重命名</van-button>
+        </div>
       </van-form>
     </van-popup>
 
-    <van-popup v-model:show="showTransfer" position="bottom"  :style="{ height: '85%' }" closeable :title="isTransferDir ? '转移目录' : '转移文件'">
-      <van-form @submit="submitTransfer" style="padding:16px">
-        <van-cell :title="'输入路径'" :value="isTransferDir ? currentDir : activeFile?.path" title-style="font-size:13px" value-style="font-size:11px;color:#969799;word-break:break-all" />
-        <van-field v-model="transferForm.outpath" label="输出路径" placeholder="留空使用默认" />
-        <van-field
-          name="syncmod" label="转移方式" is-link readonly
-          :model-value="SYNC_MODS.find(o => o.value === transferForm.syncmod)?.text || transferForm.syncmod"
-          @click="openSyncmodPicker"
-        />
-        <van-field name="type" label="类型">
-          <template #input>
-            <van-radio-group v-model="transferForm.type" direction="horizontal">
-              <van-radio name="MOV" shape="square">电影</van-radio>
-              <van-radio name="TV" shape="square">电视剧</van-radio>
-              <van-radio name="ANIME" shape="square">动漫</van-radio>
-            </van-radio-group>
+    <!-- 手动转移 -->
+    <van-popup v-model:show="showTransfer" position="bottom" round teleport="body" class="sheet sheet-tall">
+      <van-form class="sheet-form" @submit="submitTransfer">
+        <div class="sheet-header">
+          <span class="sheet-title">{{ isTransferDir ? '转移目录' : '转移文件' }}</span>
+          <van-icon name="cross" class="sheet-close" @click="showTransfer = false" />
+        </div>
+        <div class="sheet-body">
+          <div class="form-path">
+            <span class="form-path-label">输入路径</span>{{ isTransferDir ? currentDir : activeFile?.path }}
+          </div>
+
+          <div class="section-label">基本设置</div>
+          <van-cell-group inset class="form-group">
+            <van-field v-model="transferForm.outpath" label="输出路径" placeholder="留空使用默认" clearable />
+            <van-field
+              label="转移方式" is-link readonly
+              :model-value="SYNC_MODS.find(o => o.value === transferForm.syncmod)?.text || transferForm.syncmod"
+              placeholder="请选择"
+              @click="openSyncmodPicker"
+            />
+            <van-field
+              label="类型" is-link readonly
+              :model-value="TYPE_OPTIONS.find(o => o.value === transferForm.type)?.text || transferForm.type"
+              placeholder="请选择"
+              @click="openTypePicker"
+            />
+            <van-field label="TMDB ID">
+              <template #input>
+                <div class="tmdb-input">
+                  <van-tag v-if="transferForm.tmdb" size="medium" type="primary" closable @close="transferForm.tmdb = ''">
+                    {{ transferForm.tmdb }}
+                  </van-tag>
+                  <span v-else class="tmdb-placeholder">留空自动识别</span>
+                  <van-button size="small" plain hairline type="primary" icon="search" @click="openTmdbSearch">查询</van-button>
+                </div>
+              </template>
+            </van-field>
+          </van-cell-group>
+
+          <template v-if="transferForm.type !== 'MOV'">
+            <div class="section-label">剧集设置</div>
+            <van-cell-group inset class="form-group">
+              <van-field v-model="transferForm.season" label="季" placeholder="如 1" type="number" />
+              <van-field v-model="transferForm.episode_format" label="集数定位" placeholder="如 {ep}" />
+              <van-field v-model="transferForm.episode_details" label="起止集数" placeholder="如 1[,12]" />
+              <van-field v-model="transferForm.episode_offset" label="集数偏移" placeholder="如 0" type="number" />
+            </van-cell-group>
           </template>
-        </van-field>
-        <van-field name="tmdb" label="TMDB ID" placeholder="留空自动识别">
-          <template #button><van-button size="small"  plain @click="openTmdbSearch">查询</van-button></template>
-          <template #input>
-            <van-tag v-if="transferForm.tmdb" size="medium" closable @close="transferForm.tmdb = ''" style="margin-right:4px">{{ transferForm.tmdb }}</van-tag>
-          </template>
-        </van-field>
-        <van-field v-if="transferForm.type !== 'MOV'" v-model="transferForm.season" label="季" placeholder="电视剧时填写" type="number" />
-        <van-field v-model="transferForm.min_filesize" label="最小文件大小(MB)" placeholder="如 200" type="number" />
-        <van-field v-if="transferForm.type !== 'MOV'" v-model="transferForm.episode_format" label="集数定位格式" placeholder="如 {ep}" />
-        <van-field v-if="transferForm.type !== 'MOV'" v-model="transferForm.episode_details" label="起始集[,终止集]" placeholder="如 1[,12]" />
-        <van-field v-if="transferForm.type !== 'MOV'" v-model="transferForm.episode_offset" label="集数偏移" placeholder="如 0" type="number" />
-        <div style="margin-top:16px">
-          <van-button  block type="primary" native-type="submit" :loading="transferLoading">开始转移</van-button>
+
+          <div class="section-label">高级选项</div>
+          <van-cell-group inset class="form-group">
+            <van-field v-model="transferForm.min_filesize" label="最小大小" placeholder="单位 MB，如 200" type="number" />
+          </van-cell-group>
+        </div>
+        <div class="sheet-footer">
+          <van-button block round type="primary" native-type="submit" :loading="transferLoading">开始转移</van-button>
         </div>
       </van-form>
     </van-popup>
 
     <!-- 转移进度遮罩 -->
-    <van-overlay :show="progressVisible" :lock-scroll="false" style="display:flex;align-items:center;justify-content:center">
+    <van-overlay :show="progressVisible" :lock-scroll="false" class="progress-overlay">
       <div class="progress-box">
         <div class="progress-title">{{ progressTitle }}</div>
-        <van-progress :percentage="progressValue" :stroke-width="16" :show-pivot="false" style="margin:16px 0" />
+        <van-progress :percentage="progressValue" :stroke-width="10" style="margin:18px 0" />
         <div class="progress-text">{{ progressText }}</div>
       </div>
     </van-overlay>
 
-    <van-popup v-model:show="showSyncmodPicker" position="bottom"  teleport="body" @closed="showTransfer = true">
+    <!-- 转移方式选择器 -->
+    <van-popup v-model:show="showSyncmodPicker" position="bottom" round teleport="body" @closed="showTransfer = true">
       <van-picker
+        title="选择转移方式"
         :columns="SYNC_MODS"
         :default-index="SYNC_MODS.findIndex(s => s.value === transferForm.syncmod)"
-        @confirm="({ selectedValues, selectedOptions }) => { transferForm.syncmod = selectedOptions[0].value;console.info(transferForm.syncmod); showSyncmodPicker = false }"
+        @confirm="({ selectedOptions }) => { transferForm.syncmod = selectedOptions[0].value; showSyncmodPicker = false }"
         @cancel="showSyncmodPicker = false"
       />
     </van-popup>
 
-    <van-popup v-model:show="showTmdbSearch" position="bottom"  :style="{ height: '70%' }" closeable title="查询TMDB ID">
-      <div style="padding:56px 12px 12px">
-        <div style="display:flex;gap:8px;margin-bottom:12px">
-          <van-field v-model="tmdbSearchKeyword" placeholder="输入标题" style="flex:1" @keyup.enter="searchTmdb" />
-          <van-button size="small"  plain type="primary" @click="searchTmdb">搜索</van-button>
-        </div>
-        <van-loading v-if="tmdbSearchLoading" size="16" style="padding:20px;text-align:center" />
-        <van-empty v-else-if="tmdbSearchKeyword && tmdbSearchResults.length === 0" description="无搜索结果" />
-        <div v-else>
-          <div v-for="item in tmdbSearchResults" :key="item.tmdb_id" class="tmdb-item" @click="selectTmdb(item)">
-            <img v-if="item.image" :src="item.image" class="tmdb-poster" />
-            <div class="tmdb-info">
-              <div class="tmdb-title">{{ item.title }}</div>
-              <div class="tmdb-year" v-if="item.year">{{ item.year }}</div>
-              <div class="tmdb-overview" v-if="item.overview">{{ item.overview }}</div>
+    <!-- 类型选择器 -->
+    <van-popup v-model:show="showTypePicker" position="bottom" round teleport="body" @closed="showTransfer = true">
+      <van-picker
+        title="选择类型"
+        :columns="TYPE_OPTIONS"
+        :default-index="TYPE_OPTIONS.findIndex(t => t.value === transferForm.type)"
+        @confirm="({ selectedOptions }) => { transferForm.type = selectedOptions[0].value; showTypePicker = false }"
+        @cancel="showTypePicker = false"
+      />
+    </van-popup>
+
+    <!-- TMDB 查询 -->
+    <van-popup v-model:show="showTmdbSearch" position="bottom" round teleport="body" class="sheet sheet-tall-70">
+      <div class="sheet-header">
+        <span class="sheet-title">查询 TMDB ID</span>
+        <van-icon name="cross" class="sheet-close" @click="showTmdbSearch = false" />
+      </div>
+      <van-search
+        v-model="tmdbSearchKeyword"
+        class="sheet-search"
+        shape="round"
+        placeholder="输入媒体标题"
+        show-action
+        @search="searchTmdb"
+      >
+        <template #action><div class="search-action" @click="searchTmdb">搜索</div></template>
+      </van-search>
+      <div class="sheet-body">
+        <van-loading v-if="tmdbSearchLoading" size="20" class="body-loading" />
+        <template v-else>
+          <van-empty v-if="!tmdbSearchKeyword && tmdbSearchResults.length === 0" image="search" description="输入标题开始搜索" />
+          <van-empty v-else-if="tmdbSearchResults.length === 0" description="无搜索结果" />
+          <div v-else class="tmdb-list">
+            <div v-for="item in tmdbSearchResults" :key="item.tmdb_id" class="tmdb-item" @click="selectTmdb(item)">
+              <img v-if="item.image" :src="item.image" class="tmdb-poster" alt="" />
+              <div v-else class="tmdb-poster tmdb-poster-empty"><van-icon name="photo-o" size="20" /></div>
+              <div class="tmdb-info">
+                <div class="tmdb-title">{{ item.title }}</div>
+                <div v-if="item.year" class="tmdb-year">{{ item.year }}</div>
+                <div v-if="item.overview" class="tmdb-overview">{{ item.overview }}</div>
+              </div>
             </div>
           </div>
-        </div>
+        </template>
       </div>
     </van-popup>
 
-    <van-popup v-model:show="showTree" position="bottom"  :style="{ height: '65%' }" closeable title="目录树">
-      <div style="padding:8px 12px;overflow-y:auto;max-height:calc(65vh - 50px)">
-        <div class="tree-nav">
-          <van-icon name="arrow-left" :style="{ opacity: treePath !== '/' ? 1 : 0.3 }" @click="treeGoUp" />
-          <div class="tree-crumbs" style="margin-left:8px;font-size:13px;color:#646566">{{ treePath }}</div>
-        </div>
-        <van-loading v-if="treeLoading" size="16" style="padding:20px;text-align:center" />
+    <!-- 目录树 -->
+    <van-popup v-model:show="showTree" position="bottom" round teleport="body" class="sheet sheet-tall-70">
+      <div class="sheet-header">
+        <span class="sheet-title">目录树</span>
+        <van-icon name="cross" class="sheet-close" @click="showTree = false" />
+      </div>
+      <div class="tree-nav">
+        <div class="nav-btn" :class="{ disabled: treePath === '/' }" @click="treeGoUp"><van-icon name="arrow-left" /></div>
+        <div class="tree-path">{{ treePath }}</div>
+      </div>
+      <div class="sheet-body">
+        <van-loading v-if="treeLoading" size="20" class="body-loading" />
         <template v-else>
           <div v-for="item in treeItems" :key="item.path" class="tree-node" @click="onTreeSelect(item)">
-            <van-icon :name="item.is_dir ? 'folder-o' : 'description-o'" :color="item.is_dir ? '#ff976a' : '#1989fa'" size="20" />
+            <van-icon :name="item.is_dir ? 'folder-o' : 'description-o'" :color="item.is_dir ? '#ff976a' : '#1989fa'" size="18" />
             <span class="tree-node-label">{{ item.name }}</span>
             <span v-if="!item.is_dir && item.size" class="tree-node-size">{{ formatSize(item.size) }}</span>
-            <van-icon v-if="item.is_dir" name="arrow" color="#c8c9cc" style="margin-left:auto" />
+            <van-icon v-if="item.is_dir" name="arrow" color="#c8c9cc" />
           </div>
           <van-empty v-if="treeItems.length === 0" description="目录为空" />
         </template>
       </div>
     </van-popup>
-    <van-dialog v-model:show="hardlinkSearchDirVisible" title="硬链接查询" show-cancel-button @confirm="doHardlinkSearch">
-      <van-field v-model="hardlinkDir" placeholder="输入查找目录" />
-    </van-dialog>
 
-    <van-popup v-model:show="hardlinkVisible" position="bottom" :style="{ height: '70%' }" closeable title="硬链接文件">
-      <div style="padding:50px 12px 12px;height:100%;box-sizing:border-box;display:flex;flex-direction:column">
-        <div style="flex:1;overflow-y:auto">
-          <van-loading v-if="hardlinkLoading" size="16" style="padding:20px;text-align:center">正在查询硬链接...</van-loading>
-          <van-empty v-else-if="Object.keys(hardlinkResults).length === 0" description="暂无数据" />
-          <template v-else>
-            <div v-for="(links, file) in hardlinkResults" :key="file" style="margin-bottom:12px">
-              <div style="font-size:12px;color:#969799;word-break:break-all;margin-bottom:6px;padding:4px 8px;background:#f5f5f5;border-radius:4px">{{ file }}</div>
-              <div v-for="(h, idx) in links" :key="idx" style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;cursor:pointer" @click="toggleHardlinkSelect(h.file)">
-                <van-checkbox :model-value="hardlinkSelected.has(h.file)" style="flex-shrink:0;margin-top:2px" />
-                <div style="flex:1;overflow:hidden;min-width:0">
-                  <div style="font-size:13px;color:#323233;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">🔗 {{ h.filename }}</div>
-                  <div style="font-size:11px;color:#969799;word-break:break-all">{{ h.filepath }}</div>
-                </div>
+    <!-- 硬链接查询目录 -->
+    <van-popup v-model:show="hardlinkSearchDirVisible" position="bottom" round teleport="body" class="sheet">
+      <div class="sheet-header">
+        <span class="sheet-title">硬链接查询</span>
+        <van-icon name="cross" class="sheet-close" @click="hardlinkSearchDirVisible = false" />
+      </div>
+      <div class="sheet-body">
+        <div class="sheet-tip">将在下方目录中查找所选文件的硬链接</div>
+        <van-cell-group inset class="form-group">
+          <van-field v-model="hardlinkDir" label="查找目录" placeholder="输入查找目录" clearable @keyup.enter="doHardlinkSearch" />
+        </van-cell-group>
+      </div>
+      <div class="sheet-footer">
+        <van-button round plain hairline class="grow" @click="hardlinkSearchDirVisible = false">取消</van-button>
+        <van-button round type="primary" class="grow" @click="doHardlinkSearch">开始查询</van-button>
+      </div>
+    </van-popup>
+
+    <!-- 硬链接查询结果 -->
+    <van-popup v-model:show="hardlinkVisible" position="bottom" round teleport="body" class="sheet sheet-tall-75">
+      <div class="sheet-header">
+        <span class="sheet-title">硬链接文件</span>
+        <van-icon name="cross" class="sheet-close" @click="hardlinkVisible = false" />
+      </div>
+      <div class="sheet-body">
+        <van-loading v-if="hardlinkLoading" size="20" class="body-loading" />
+        <van-empty v-else-if="Object.keys(hardlinkResults).length === 0" description="暂无数据" />
+        <template v-else>
+          <div v-for="(links, file) in hardlinkResults" :key="file" class="hl-group">
+            <div class="hl-file">
+              <van-icon name="description-o" class="hl-file-icon" />
+              <div class="hl-file-text">
+                <div class="hl-file-name">{{ baseName(String(file)) }}</div>
+                <div class="hl-file-path">{{ file }}</div>
               </div>
             </div>
-          </template>
-        </div>
-        <div v-if="!hardlinkLoading && Object.keys(hardlinkResults).length > 0" style="display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid #ebedf0;flex-shrink:0">
-          <span style="font-size:12px;color:#1989fa;cursor:pointer" @click="allHardlinkSelected ? unselectAllHardlinks() : selectAllHardlinks()">
-            {{ allHardlinkSelected ? '全不选' : '全选' }}
-          </span>
-          <span style="font-size:12px;color:#1989fa;cursor:pointer" @click="invertHardlinkSelect">反选</span>
-          <span style="font-size:12px;color:#969799;flex:1;text-align:right">已选 {{ hardlinkSelected.size }} / {{ allHardlinkFiles.length }} 项</span>
-          <van-button size="small" type="danger" :disabled="hardlinkSelected.size === 0" @click="deleteSelectedHardlinks">批量删除</van-button>
-        </div>
+            <div
+              v-for="(h, idx) in links" :key="idx"
+              class="hl-item" :class="{ 'hl-item-active': hardlinkSelected.has(h.file) }"
+              @click="toggleHardlinkSelect(h.file)"
+            >
+              <van-checkbox :model-value="hardlinkSelected.has(h.file)" class="hl-check" />
+              <div class="hl-item-text">
+                <div class="hl-item-name">{{ h.filename }}</div>
+                <div class="hl-item-path">{{ h.filepath }}</div>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+      <div v-if="!hardlinkLoading && Object.keys(hardlinkResults).length > 0" class="sheet-footer hl-footer">
+        <van-button size="small" round plain hairline @click="allHardlinkSelected ? unselectAllHardlinks() : selectAllHardlinks()">
+          {{ allHardlinkSelected ? '全不选' : '全选' }}
+        </van-button>
+        <van-button size="small" round plain hairline @click="invertHardlinkSelect">反选</van-button>
+        <span class="hl-count">已选 {{ hardlinkSelected.size }} / {{ allHardlinkFiles.length }} 项</span>
+        <van-button size="small" round type="danger" :disabled="hardlinkSelected.size === 0" @click="deleteSelectedHardlinks">
+          删除
+        </van-button>
       </div>
     </van-popup>
   </div>
 </template>
 
 <style scoped>
-.mediafile { padding: 8px; }
-.toolbar { margin-bottom: 8px; }
-.breadcrumb-bar { display:flex;align-items:center;gap:4px;padding:10px 6px;font-size:15px;color:#646566;overflow:hidden; }
-.crumbs { display:flex;align-items:center;overflow-x:auto;white-space:nowrap;flex:1;margin-left:8px; }
-.crumb { cursor:pointer;flex-shrink:0;display:flex;align-items:center; }
-.crumb-sep { margin:0 2px;color:#c8c9cc; }
-.action-bar { display:flex;gap:8px;padding:4px 4px 8px; }
-.file-grid { display:flex;flex-direction:column;gap:6px; }
+.mediafile {
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ---- 顶部搜索 / 导航 ---- */
+.path-search {
+  padding: 4px 6px;
+  border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(100, 101, 102, 0.08);
+}
+.search-action {
+  color: var(--van-primary-color);
+  font-size: 14px;
+  font-weight: 500;
+  padding: 0 6px;
+  cursor: pointer;
+}
+.breadcrumb-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  border-radius: 12px;
+  padding: 8px 10px;
+  box-shadow: 0 1px 4px rgba(100, 101, 102, 0.08);
+}
+.nav-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f2f3f5;
+  color: #646566;
+  font-size: 16px;
+  cursor: pointer;
+}
+.nav-btn:active { background: #e8eaee; }
+.nav-btn.disabled { opacity: 0.35; }
+.crumbs {
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  white-space: nowrap;
+  flex: 1;
+  scrollbar-width: none;
+}
+.crumbs::-webkit-scrollbar { display: none; }
+.crumb {
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  color: #646566;
+}
+.crumb.current { color: #323233; font-weight: 600; }
+.crumb-sep { margin: 0 4px; color: #dcdee0; }
+.action-bar { display: flex; gap: 8px; }
+.action-bar .van-button { flex: 1; }
+.page-loading { display: block; margin: 60px auto; }
+
+/* ---- 文件卡片网格（竖屏 1 列，横屏/宽屏多列） ---- */
+.file-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+.grid-empty { grid-column: 1 / -1; }
+@media (min-width: 600px) {
+  .file-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (min-width: 1024px) {
+  .file-grid { grid-template-columns: repeat(3, 1fr); }
+}
 .file-card {
-  display:flex;align-items:flex-start;gap:10px;padding:12px;
-  background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.06);
+  min-width: 0;
+  background: #fff;
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 1px 4px rgba(100, 101, 102, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
-.file-icon { padding-top:2px;flex-shrink:0; }
-.file-body { flex:1;overflow:hidden;min-width:0; }
-.file-name { font-size:14px;font-weight:600;color:#323233;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
-.file-meta { font-size:11px;color:#969799;gap:6px;display:flex;margin-top:2px; }
-.chips-row { display:flex;flex-wrap:wrap;gap:4px;margin-top:6px; }
-.chip-clickable { cursor:pointer; }
-.file-actions { display:flex;align-items:center;gap:8px;flex-shrink:0;padding-top:2px; }
-.file-card-dir { align-items: center; }
-.file-card-dir .file-actions { padding-top: 0; }
+.file-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  cursor: pointer;
+}
+.file-main:active { opacity: 0.6; }
+.file-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.file-icon.dir { background: #fff3e8; color: #ff976a; }
+.file-icon.file { background: #e8f2ff; color: #1989fa; }
+.file-body { flex: 1; min-width: 0; }
+.file-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #323233;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-meta {
+  display: flex;
+  gap: 8px;
+  margin-top: 3px;
+  font-size: 11px;
+  color: #969799;
+}
+.dir-arrow { color: #c8c9cc; flex-shrink: 0; }
+.file-actions {
+  display: flex;
+  gap: 8px;
+  border-top: 1px solid #f2f3f5;
+  padding-top: 10px;
+}
+.file-actions .van-button { flex: 1; }
+.file-actions .more-btn { flex: 0 0 36px; }
+
+/* ---- 识别结果 ---- */
+.nt-result {
+  background: #f7f8fa;
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.nt-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.nt-type {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: #fff;
+  border-radius: 4px;
+  padding: 2px 5px;
+  line-height: 1.3;
+}
+.nt-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #323233;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.nt-year { font-size: 12px; color: #969799; flex-shrink: 0; }
+.nt-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.nt-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  border-radius: 6px;
+  padding: 3px 7px;
+  line-height: 1.4;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nt-chip .van-icon { font-size: 12px; }
+.nt-chip-link { background: #e8f2ff; color: #1989fa; cursor: pointer; }
+.nt-chip-link:active { background: #d6e8fd; }
+.nt-chip-tech { background: #fff; color: #646566; border: 1px solid #ebedf0; }
+.nt-fail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #ee0a24;
+  font-size: 12px;
+}
+
+/* ---- 底部弹层通用 ---- */
+.sheet {
+  max-width: 640px;
+  right: 0;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+.sheet-tall { height: 88vh; height: 88dvh; }
+.sheet-tall-70 { height: 72vh; height: 72dvh; }
+.sheet-tall-75 { height: 78vh; height: 78dvh; }
+.sheet-form {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.sheet-header {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 44px 12px;
+  border-bottom: 1px solid #f2f3f5;
+  background: #fff;
+}
+.sheet-title { font-size: 16px; font-weight: 600; color: #323233; }
+.sheet-close {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #969799;
+  background: #f2f3f5;
+  border-radius: 50%;
+  font-size: 16px;
+  cursor: pointer;
+}
+.sheet-close:active { background: #e8eaee; }
+.sheet-search { flex-shrink: 0; border-bottom: 1px solid #f2f3f5; }
+.sheet-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px;
+  background: #f7f8fa;
+}
+.sheet-footer {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  background: #fff;
+  border-top: 1px solid #f2f3f5;
+}
+.sheet-footer .grow { flex: 1; }
+.sheet-tip {
+  font-size: 12px;
+  color: #969799;
+  margin: 0 4px 10px;
+  word-break: break-all;
+  line-height: 1.5;
+}
+.body-loading { display: block; margin: 40px auto; }
+
+/* ---- 表单分组 ---- */
+.section-label {
+  font-size: 12px;
+  color: #969799;
+  font-weight: 500;
+  margin: 2px 4px 8px;
+}
+.form-group { margin: 0 0 14px; border-radius: 12px; overflow: hidden; }
+.form-path {
+  background: #fff;
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  font-size: 12px;
+  color: #646566;
+  word-break: break-all;
+  line-height: 1.5;
+}
+.form-path-label { color: #969799; margin-right: 8px; }
+.tmdb-input { display: flex; align-items: center; gap: 8px; width: 100%; }
+.tmdb-placeholder { flex: 1; color: var(--van-field-placeholder-color, #c8c9cc); }
+.tmdb-input .van-tag { flex-shrink: 0; }
+.tmdb-input .van-button { margin-left: auto; flex-shrink: 0; }
+
+/* ---- 目录树 ---- */
+.tree-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #f2f3f5;
+  background: #fff;
+  flex-shrink: 0;
+}
+.tree-path {
+  flex: 1;
+  font-size: 12px;
+  color: #646566;
+  overflow-x: auto;
+  white-space: nowrap;
+}
 .tree-node {
-  display:flex;align-items:center;gap:8px;padding:10px 8px;cursor:pointer;border-bottom:1px solid #f5f5f5;
-  font-size:14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 10px;
+  background: #fff;
+  border-radius: 10px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(100, 101, 102, 0.05);
 }
-.tree-node:active { background:#f5f5f5; }
-.tree-node-label { flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
-.tree-node-size { font-size:11px;color:#969799;flex-shrink:0; }
-.tree-nav { display:flex;align-items:center;gap:8px;padding:6px 0 10px;border-bottom:1px solid #f5f5f5;margin-bottom:8px; }
-.tree-crumbs { display:flex;overflow-x:auto;white-space:nowrap;font-size:13px;color:#646566; }
+.tree-node:active { background: #f2f3f5; }
+.tree-node-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: #323233;
+}
+.tree-node-size { font-size: 11px; color: #969799; flex-shrink: 0; }
+
+/* ---- TMDB 搜索结果 ---- */
+.tmdb-list { display: flex; flex-direction: column; gap: 8px; }
 .tmdb-item {
-  display:flex;align-items:center;gap:10px;padding:10px;cursor:pointer;border-bottom:1px solid #f5f5f5;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  background: #fff;
+  border-radius: 10px;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(100, 101, 102, 0.06);
 }
-.tmdb-poster { width:40px;height:56px;object-fit:cover;border-radius:4px;flex-shrink:0; }
-.tmdb-info { flex:1;overflow:hidden; }
-.tmdb-title { font-size:13px;font-weight:600;color:#323233;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
-.tmdb-year { font-size:11px;color:#969799; }
+.tmdb-item:active { background: #f7f8fa; }
+.tmdb-poster {
+  width: 46px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 6px;
+  flex-shrink: 0;
+  background: #f2f3f5;
+}
+.tmdb-poster-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #dcdee0;
+}
+.tmdb-info { flex: 1; min-width: 0; }
+.tmdb-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #323233;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tmdb-year { font-size: 11px; color: #969799; margin-top: 2px; }
+.tmdb-overview {
+  font-size: 11px;
+  color: #969799;
+  margin-top: 4px;
+  line-height: 1.5;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* ---- 硬链接结果 ---- */
+.hl-group {
+  background: #fff;
+  border-radius: 12px;
+  padding: 10px;
+  margin-bottom: 10px;
+  box-shadow: 0 1px 3px rgba(100, 101, 102, 0.06);
+}
+.hl-file {
+  display: flex;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed #ebedf0;
+  margin-bottom: 6px;
+}
+.hl-file-icon { color: #1989fa; font-size: 16px; margin-top: 2px; flex-shrink: 0; }
+.hl-file-text { flex: 1; min-width: 0; }
+.hl-file-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #323233;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hl-file-path { font-size: 11px; color: #969799; word-break: break-all; margin-top: 2px; }
+.hl-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.hl-item + .hl-item { margin-top: 2px; }
+.hl-item:active { background: #f7f8fa; }
+.hl-item-active { background: #e8f2ff; }
+.hl-item-active:active { background: #dcebfb; }
+.hl-check { flex-shrink: 0; margin-top: 2px; pointer-events: none; }
+.hl-item-text { flex: 1; min-width: 0; }
+.hl-item-name {
+  font-size: 13px;
+  color: #323233;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hl-item-path { font-size: 11px; color: #969799; word-break: break-all; margin-top: 2px; }
+.hl-footer .van-button { flex: 0 0 auto; }
+.hl-count { flex: 1; text-align: right; font-size: 12px; color: #969799; }
+
+/* ---- 进度遮罩 ---- */
+.progress-overlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 .progress-box {
-  width:280px;padding:24px;background:#fff;border-radius:12px;text-align:center;
+  width: min(320px, 78vw);
+  padding: 22px 20px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
 }
-.progress-title { font-size:14px;color:#323233;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
-.progress-text { font-size:13px;color:#969799; }
-.tmdb-overview { font-size:11px;color:#969799;margin-top:2px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical; }
+.progress-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #323233;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+.progress-text { font-size: 12px; color: #969799; text-align: center; word-break: break-all; }
 </style>
