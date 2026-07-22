@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { showToast } from 'vant'
 import { useModalStore } from '@/stores/modal'
@@ -23,6 +23,12 @@ interface TmdbSearchItem {
   image: string
   overview: string
   link: string
+}
+
+interface HardlinkFile {
+  file: string
+  filename: string
+  filepath: string
 }
 
 type NameTestResult = NameTestData | { name: string }
@@ -79,9 +85,34 @@ const progressValue = ref(0)
 const progressText = ref('请稍候...')
 const progressTitle = ref('')
 let progressTimer: ReturnType<typeof setTimeout> | null = null
+let pollingActive = false
+
+// Hardlink state
+const hardlinkVisible = ref(false)
+const hardlinkLoading = ref(false)
+const hardlinkDir = ref('')
+const hardlinkResults = ref<Record<string, HardlinkFile[]>>({})
+const hardlinkSearchDirVisible = ref(false)
+const hardlinkPendingFiles = ref<string[]>([])
+const hardlinkSelected = ref<Set<string>>(new Set())
+
+const allHardlinkFiles = computed(() => {
+  const files: string[] = []
+  for (const list of Object.values(hardlinkResults.value)) {
+    for (const h of list) {
+      files.push(h.file)
+    }
+  }
+  return files
+})
+
+const allHardlinkSelected = computed(() => {
+  return allHardlinkFiles.value.length > 0 && allHardlinkFiles.value.every(f => hardlinkSelected.value.has(f))
+})
 
 function startProgressPolling(type: string) {
   stopProgressPolling()
+  pollingActive = true
   async function poll() {
     try {
       const res = await refreshProcess(type)
@@ -90,12 +121,15 @@ function startProgressPolling(type: string) {
         progressText.value = res.text
       }
     } catch {}
-    progressTimer = setTimeout(poll, 200)
+    if (pollingActive) {
+      progressTimer = setTimeout(poll, 200)
+    }
   }
   poll()
 }
 
 function stopProgressPolling() {
+  pollingActive = false
   if (progressTimer) {
     clearTimeout(progressTimer)
     progressTimer = null
@@ -426,6 +460,104 @@ function selectTmdb(item: TmdbSearchItem) {
   showTmdbSearch.value = false
 }
 
+function openHardlink(f: FileItem) {
+  hardlinkPendingFiles.value = [f.path]
+  if (currentDir.value === '/') {
+    hardlinkDir.value = '/' + f.path.split('/')[1]
+  } else {
+    hardlinkDir.value = currentDir.value
+  }
+  hardlinkSearchDirVisible.value = true
+}
+
+function openHardlinkAll() {
+  const filePaths = files.value.filter((f) => !f.is_dir).map((f) => f.path)
+  if (filePaths.length === 0) {
+    showToast('当前目录下没有文件')
+    return
+  }
+  hardlinkPendingFiles.value = filePaths
+  hardlinkDir.value = currentDir.value
+  hardlinkSearchDirVisible.value = true
+}
+
+async function doHardlinkSearch() {
+  if (!hardlinkDir.value) {
+    showToast('请填写查找目录')
+    return
+  }
+  hardlinkSearchDirVisible.value = false
+  hardlinkLoading.value = true
+  hardlinkVisible.value = true
+  try {
+    const res = await doAction<{ code: number; data?: Record<string, HardlinkFile[]> }>('find_hardlinks', {
+      files: hardlinkPendingFiles.value,
+      dir: hardlinkDir.value
+    })
+    if (res.code === 0) {
+      if (res.data && Object.keys(res.data).length > 0) {
+        hardlinkResults.value = res.data
+      } else {
+        hardlinkResults.value = {}
+        modal.success('查询成功，但未找到硬链接文件')
+        hardlinkVisible.value = false
+      }
+    } else {
+      modal.error('查询硬链接文件失败')
+      hardlinkVisible.value = false
+    }
+  } catch {
+    modal.error('查询硬链接失败')
+    hardlinkVisible.value = false
+  } finally {
+    hardlinkLoading.value = false
+  }
+}
+
+function toggleHardlinkSelect(file: string) {
+  const next = new Set(hardlinkSelected.value)
+  if (next.has(file)) next.delete(file)
+  else next.add(file)
+  hardlinkSelected.value = next
+}
+
+function selectAllHardlinks() {
+  hardlinkSelected.value = new Set(allHardlinkFiles.value)
+}
+
+function unselectAllHardlinks() {
+  hardlinkSelected.value = new Set()
+}
+
+function invertHardlinkSelect() {
+  const current = hardlinkSelected.value
+  const next = new Set<string>()
+  for (const f of allHardlinkFiles.value) {
+    if (!current.has(f)) next.add(f)
+  }
+  hardlinkSelected.value = next
+}
+
+async function deleteSelectedHardlinks() {
+  const files = Array.from(hardlinkSelected.value)
+  if (files.length === 0) {
+    showToast('没有硬链接文件被选中')
+    return
+  }
+  const ok = await modal.confirm(
+    '即将删除所有选中的硬链接文件，如文件所在目录已没有其它媒体文件则目录也将被删除，是否确认？',
+    '删除硬链接'
+  )
+  if (!ok) return
+  const res = await doAction<{ code: number; msg?: string }>('delete_files', { files })
+  if (res.code === 0) {
+    modal.success('删除成功')
+    hardlinkVisible.value = false
+  } else {
+    modal.error(res.msg || '删除失败')
+  }
+}
+
 function formatSize(s: string): string {
   if (!s) return ''
   const n = Number(s)
@@ -459,6 +591,7 @@ function formatSize(s: string): string {
     <div class="action-bar">
       <van-button size="small"  plain type="warning" icon="share-o" @click="openTransferDir">转移目录</van-button>
       <van-button size="small"  plain type="primary" icon="refresh" @click="loadFiles(currentDir)">刷新</van-button>
+      <van-button size="small"  plain icon="more-o" @click="openHardlinkAll">所有硬链接</van-button>
     </div>
 
     <van-loading v-if="loading" size="20" style="padding:40px;text-align:center" />
@@ -512,9 +645,10 @@ function formatSize(s: string): string {
 
     <!-- More actions: rename / delete -->
     <van-action-sheet v-model:show="showMoreActions" :title="activeFile?.name || ''">
-      <div style="padding:16px;display:flex;gap:12px">
+      <div style="padding:16px;display:flex;gap:8px">
         <van-button  block plain @click="activeFile && doRename(activeFile)" icon="edit">重命名</van-button>
         <van-button  block plain type="danger" @click="activeFile && doDelete(activeFile)" icon="delete">删除</van-button>
+        <van-button  block plain @click="activeFile && openHardlink(activeFile)" icon="more-o">硬链接</van-button>
       </div>
     </van-action-sheet>
 
@@ -617,15 +751,47 @@ function formatSize(s: string): string {
         </template>
       </div>
     </van-popup>
+    <van-dialog v-model:show="hardlinkSearchDirVisible" title="硬链接查询" show-cancel-button @confirm="doHardlinkSearch">
+      <van-field v-model="hardlinkDir" placeholder="输入查找目录" />
+    </van-dialog>
+
+    <van-popup v-model:show="hardlinkVisible" position="bottom" :style="{ height: '70%' }" closeable title="硬链接文件">
+      <div style="padding:50px 12px 12px;height:100%;box-sizing:border-box;display:flex;flex-direction:column">
+        <div style="flex:1;overflow-y:auto">
+          <van-loading v-if="hardlinkLoading" size="16" style="padding:20px;text-align:center">正在查询硬链接...</van-loading>
+          <van-empty v-else-if="Object.keys(hardlinkResults).length === 0" description="暂无数据" />
+          <template v-else>
+            <div v-for="(links, file) in hardlinkResults" :key="file" style="margin-bottom:12px">
+              <div style="font-size:12px;color:#969799;word-break:break-all;margin-bottom:6px;padding:4px 8px;background:#f5f5f5;border-radius:4px">{{ file }}</div>
+              <div v-for="(h, idx) in links" :key="idx" style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;cursor:pointer" @click="toggleHardlinkSelect(h.file)">
+                <van-checkbox :model-value="hardlinkSelected.has(h.file)" style="flex-shrink:0;margin-top:2px" />
+                <div style="flex:1;overflow:hidden;min-width:0">
+                  <div style="font-size:13px;color:#323233;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">🔗 {{ h.filename }}</div>
+                  <div style="font-size:11px;color:#969799;word-break:break-all">{{ h.filepath }}</div>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+        <div v-if="!hardlinkLoading && Object.keys(hardlinkResults).length > 0" style="display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid #ebedf0;flex-shrink:0">
+          <span style="font-size:12px;color:#1989fa;cursor:pointer" @click="allHardlinkSelected ? unselectAllHardlinks() : selectAllHardlinks()">
+            {{ allHardlinkSelected ? '全不选' : '全选' }}
+          </span>
+          <span style="font-size:12px;color:#1989fa;cursor:pointer" @click="invertHardlinkSelect">反选</span>
+          <span style="font-size:12px;color:#969799;flex:1;text-align:right">已选 {{ hardlinkSelected.size }} / {{ allHardlinkFiles.length }} 项</span>
+          <van-button size="small" type="danger" :disabled="hardlinkSelected.size === 0" @click="deleteSelectedHardlinks">批量删除</van-button>
+        </div>
+      </div>
+    </van-popup>
   </div>
 </template>
 
 <style scoped>
 .mediafile { padding: 8px; }
 .toolbar { margin-bottom: 8px; }
-.breadcrumb-bar { display:flex;align-items:center;gap:4px;padding:6px 4px;font-size:13px;color:#646566;overflow:hidden; }
-.crumbs { display:flex;overflow-x:auto;white-space:nowrap;flex:1;margin-left:8px; }
-.crumb { cursor:pointer;flex-shrink:0; }
+.breadcrumb-bar { display:flex;align-items:center;gap:4px;padding:10px 6px;font-size:15px;color:#646566;overflow:hidden; }
+.crumbs { display:flex;align-items:center;overflow-x:auto;white-space:nowrap;flex:1;margin-left:8px; }
+.crumb { cursor:pointer;flex-shrink:0;display:flex;align-items:center; }
 .crumb-sep { margin:0 2px;color:#c8c9cc; }
 .action-bar { display:flex;gap:8px;padding:4px 4px 8px; }
 .file-grid { display:flex;flex-direction:column;gap:6px; }
