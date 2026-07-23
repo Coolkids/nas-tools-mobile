@@ -83,8 +83,10 @@ async function onRefresh() {
           </div>
         </div>
         <div class="media-info">
-          <div class="media-name">{{ item.name }}</div>
+          <a v-if="item.tmdbid" :href="`https://www.themoviedb.org/${type === 'MOV' ? 'movie' : 'tv'}/${item.tmdbid}`" target="_blank" class="media-name media-name-link">{{ item.name }}</a>
+          <div v-else class="media-name">{{ item.name }}</div>
           <div v-if="item.year" class="media-year">{{ item.year }}</div>
+          <div v-if="type === 'TV' && item.season && item.season !== 'S00'" class="media-season">{{ item.season }}</div>
           <div class="media-tags">
             <van-tag size="small" :type="stateMeta(item.state).type">{{ stateMeta(item.state).label }}</van-tag>
             <van-tag v-if="item.over_edition" size="small" type="danger">洗版</van-tag>
@@ -167,11 +169,22 @@ async function onRefresh() {
   color: #323233;
   line-height: 1.3;
 }
+.media-name-link {
+  color: var(--van-primary-color);
+  text-decoration: none;
+}
+.media-name-link:active { opacity: 0.7; }
 
 .media-year {
   margin: 4px 0 8px;
   font-size: 13px;
   color: #969799;
+}
+.media-season {
+  margin: -4px 0 8px;
+  font-size: 12px;
+  color: #ff976a;
+  font-weight: 500;
 }
 
 .media-tags {
