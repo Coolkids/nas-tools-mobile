@@ -281,7 +281,8 @@ function toggleAll() {
           <div class="card-content">
             <div class="card-header">
               <div class="card-title">
-                {{ item.TITLE }}
+                <a v-if="item.TMDBID" :href="`https://www.themoviedb.org/${item.TYPE === '电影' ? 'movie' : 'tv'}/${item.TMDBID}`" target="_blank" class="card-title-link">{{ item.TITLE }}</a>
+                <span v-else>{{ item.TITLE }}</span>
                 <span v-if="item.YEAR" class="year">({{ item.YEAR }})</span>
               </div>
               <van-checkbox
@@ -471,6 +472,11 @@ function toggleAll() {
   flex: 1;
   min-width: 0;
 }
+.card-title-link {
+  color: var(--van-primary-color);
+  text-decoration: none;
+}
+.card-title-link:active { opacity: 0.7; }
 .year {
   font-weight: 400;
   color: #969799;
