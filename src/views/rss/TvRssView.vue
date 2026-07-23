@@ -11,13 +11,24 @@ const router = useRouter()
 const modal = useModalStore()
 const loading = ref(false)
 const items = ref<RssMediaItem[]>([])
+const filteredItems = ref<RssMediaItem[]>([])
 const showAdd = ref(false)
 const showEdit = ref(false)
 const editRssid = ref<string | number>('')
 const detailItem = ref<RssMediaItem | null>(null)
 const showDetail = ref(false)
+const searchKeyword = ref('')
 
 onMounted(load)
+
+function filterItems() {
+  const kw = searchKeyword.value.trim().toLowerCase()
+  if (!kw) {
+    filteredItems.value = items.value
+  } else {
+    filteredItems.value = items.value.filter(item => item.name.toLowerCase().includes(kw))
+  }
+}
 
 async function load() {
   loading.value = true
@@ -26,7 +37,10 @@ async function load() {
     if (res.code === 0) items.value = Object.values(res.result || {})
     else showToast(res.msg || '获取电视剧订阅失败')
   } catch { showToast('获取电视剧订阅失败') }
-  finally { loading.value = false }
+  finally {
+    filterItems()
+    loading.value = false
+  }
 }
 
 function stateMeta(state?: string) {
@@ -57,15 +71,20 @@ function onDetailEdit(rssid: string | number) {
 
 <template>
   <div class="tv-rss page">
-    <div style="padding: 8px 12px">
-      <van-button  block type="primary" icon="plus" @click="showAdd = true">新增订阅</van-button>
+    <div class="toolbar-card">
+      <div class="toolbar-row search-row">
+        <van-icon name="search" class="search-icon" />
+        <input v-model="searchKeyword" class="search-input" placeholder="搜索标题..." @input="filterItems" />
+        <van-icon v-if="searchKeyword" name="close" class="search-clear" @click="searchKeyword = ''; filterItems()" />
+        <van-button size="small" plain hairline type="primary" icon="plus" @click="showAdd = true" style="flex-shrink:0" />
+      </div>
     </div>
 
     <van-loading v-if="loading" size="20" style="padding:40px;text-align:center" />
-    <van-empty v-else-if="items.length === 0" description="当前没有正在订阅的电视剧。" />
+    <van-empty v-else-if="filteredItems.length === 0" description="当前没有正在订阅的电视剧。" />
 
     <div v-else class="card-list">
-      <div v-for="item in items" :key="item.id" class="rss-card" @click="onCardClick(item)">
+      <div v-for="item in filteredItems" :key="item.id" class="rss-card" @click="onCardClick(item)">
         <div class="card-bg">
           <img :src="item.image" class="bg-img" />
           <div class="card-overlay" />
@@ -101,6 +120,44 @@ function onDetailEdit(rssid: string | number) {
 </template>
 
 <style scoped>
+.tv-rss { padding: 8px 10px; display: flex; flex-direction: column; gap: 10px; }
+
+.toolbar-card {
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(100, 101, 102, 0.08);
+  overflow: hidden;
+}
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.search-row { gap: 6px; }
+.search-icon { font-size: 15px; color: #969799; flex-shrink: 0; }
+.search-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 13px;
+  color: #323233;
+  background: transparent;
+  line-height: 1.5;
+}
+.search-input::placeholder { color: #c8c9cc; }
+.search-clear {
+  font-size: 14px;
+  color: #c8c9cc;
+  flex-shrink: 0;
+  cursor: pointer;
+  padding: 2px;
+}
+.search-clear:active { color: #969799; }
+
 .card-list { padding: 0 12px 12px; display: flex; flex-direction: column; gap: 10px; }
 .rss-card { border-radius: 8px; overflow: hidden; }
 .card-bg { position: relative; z-index: 0; height: 160px; overflow: hidden; display: flex; }
