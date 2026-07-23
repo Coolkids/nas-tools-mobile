@@ -9,6 +9,7 @@ export interface TransferHistoryItem {
   CATEGORY: string
   SEASON_EPISODE: string
   TMDBID: string
+  IMAGE: string
   SOURCE: string
   SOURCE_PATH: string
   SOURCE_FILENAME: string

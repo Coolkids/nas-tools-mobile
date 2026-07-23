@@ -9,7 +9,7 @@ import {
   restoreHistory,
   type TransferHistoryItem
 } from '@/api/rename'
-import { mediaDetail } from '@/api/discovery'
+import { proxyDoubanImage } from '@/api/discovery'
 import { rmtModeLabel } from '@/utils/rmtMode'
 
 type DelFlag = 'del_source' | 'del_dest' | 'del_all'
@@ -27,8 +27,6 @@ const items = ref<TransferHistoryItem[]>([])
 const page = ref(1)
 const keyword = ref('')
 const total = ref(0)
-// TMDBID -> 海报URL，空字符串表示已查询但无海报
-const posters = ref<Record<string, string>>({})
 
 // 操作面板：单条操作 或 批量删除
 const showActions = ref(false)
@@ -71,7 +69,6 @@ async function load(p: number) {
       total.value = res.total || 0
       page.value = p
       hasMore.value = list.length > 0 && items.value.length < total.value
-      loadPosters(list)
     }
   } catch { showToast('加载失败') } finally {
     loading.value = false
@@ -88,27 +85,8 @@ function onLoadMore() {
   load(page.value + 1)
 }
 
-function loadPosters(list: TransferHistoryItem[]) {
-  const tasks = list
-    .filter(item => item.TMDBID && !(String(item.TMDBID) in posters.value))
-    .map(async item => {
-      const key = String(item.TMDBID)
-      try {
-        const res = await mediaDetail(item.TYPE === '电影' ? 'MOV' : 'TV', key)
-        posters.value[key] = res.code === 0 && res.data?.image ? res.data.image : ''
-      } catch {
-        posters.value[key] = ''
-      }
-    })
-  Promise.allSettled(tasks)
-}
-
 function posterUrl(item: TransferHistoryItem): string {
-  return item.TMDBID ? posters.value[String(item.TMDBID)] || '' : ''
-}
-
-function onPosterError(item: TransferHistoryItem) {
-  posters.value[String(item.TMDBID)] = ''
+  return <string>item.image || ''
 }
 
 function onSearch() {
@@ -271,7 +249,6 @@ function toggleAll() {
               :src="posterUrl(item)"
               class="poster"
               alt="poster"
-              @error="onPosterError(item)"
             />
             <div v-else class="poster placeholder">
               <van-icon name="photo-o" size="24" color="#c8c9cc" />
@@ -385,7 +362,8 @@ function toggleAll() {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 12px 8px;
+  padding: 0 12px;
+  margin: 8px 0;
 }
 .total-text {
   font-size: 12px;
@@ -584,9 +562,9 @@ function toggleAll() {
   z-index: 99;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  padding-bottom: calc(8px + env(safe-area-inset-bottom));
+  gap: 6px;
+  padding: 6px 12px;
+  padding-bottom: calc(6px + env(safe-area-inset-bottom));
   background: #fff;
   box-shadow: 0 -1px 6px rgba(0,0,0,0.08);
 }
@@ -600,7 +578,7 @@ function toggleAll() {
 }
 .batch-btns {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   margin-left: auto;
 }
 </style>
