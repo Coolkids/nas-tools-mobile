@@ -86,7 +86,7 @@ function onLoadMore() {
 }
 
 function posterUrl(item: TransferHistoryItem): string {
-  return <string>item.image || ''
+  return proxyDoubanImage(item.image)
 }
 
 function onSearch() {

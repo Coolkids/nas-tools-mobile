@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { showToast } from 'vant'
 import { useModalStore } from '@/stores/modal'
 import { doAction } from '@/api/request'
+import { proxyDoubanImage } from '@/api/discovery'
 
 interface CustomWord {
   id: number
@@ -25,6 +26,7 @@ interface WordGroup {
   type: number
   seasons: number
   link?: string
+  IMAGE: string
   words: CustomWord[]
   [key: string]: unknown
 }
@@ -406,8 +408,16 @@ function wordTypeLabel(t: number): string {
     <div v-else class="group-list">
       <div v-for="group in groups" :key="group.id" class="group-card">
         <div class="group-header" @click="toggleGroup(group.id)">
-          <div class="group-icon" :class="group.type === 1 ? 'movie' : 'tv'">
-            <van-icon :name="group.type === 1 ? 'video-o' : 'play-circle-o'" size="18" />
+          <div class="group-poster-wrap">
+            <img
+              v-if="group.image"
+              :src="proxyDoubanImage(group.image)"
+              class="group-poster"
+              alt="poster"
+            />
+            <div v-else class="group-icon" :class="group.type === 1 ? 'movie' : 'tv'">
+              <van-icon :name="group.type === 1 ? 'video-o' : 'play-circle-o'" size="18" />
+            </div>
           </div>
           <div class="group-info">
             <a v-if="group.link" :href="group.link" target="_blank" class="group-name" @click.stop>{{ group.name }}</a>
@@ -794,15 +804,26 @@ function wordTypeLabel(t: number): string {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px;
+  padding: 10px 12px;
   cursor: pointer;
   user-select: none;
 }
 .group-header:active { background: #f7f8fa; }
+.group-poster-wrap {
+  flex-shrink: 0;
+}
+.group-poster {
+  width: 48px;
+  height: 68px;
+  object-fit: cover;
+  border-radius: 6px;
+  display: block;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
 .group-icon {
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
+  width: 48px;
+  height: 68px;
+  border-radius: 6px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
