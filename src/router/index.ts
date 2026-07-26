@@ -95,13 +95,13 @@ const routes: RouteRecordRaw[] = [
     path: '/movie_rss',
     name: 'movie_rss',
     component: () => import('@/views/rss/MovieRssView.vue'),
-    meta: { title: '电影订阅', showTabBar: true, icon: 'tv-o' }
+    meta: { title: '订阅', showTabBar: true, icon: 'tv-o' }
   },
   {
     path: '/tv_rss',
     name: 'tv_rss',
     component: () => import('@/views/rss/TvRssView.vue'),
-    meta: { title: '电视剧订阅' }
+    meta: { title: '订阅' }
   },
   {
     path: '/rss_history',

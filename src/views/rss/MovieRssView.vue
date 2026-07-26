@@ -79,7 +79,7 @@ function onDetailEdit(rssid: string | number) {
 <template>
   <div class="rss-index page">
     <van-sticky>
-      <van-tabs v-model:active="activeTab" @change="onTabChange" sticky>
+      <van-tabs v-model:active="activeTab" @change="onTabChange" animated sticky swipeable>
         <van-tab name="MOV" title="电影" />
         <van-tab name="TV" title="电视剧" />
       </van-tabs>
