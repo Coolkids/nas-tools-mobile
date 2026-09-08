@@ -115,8 +115,10 @@ function startProgressPolling(type: string) {
   async function poll() {
     try {
       const res = await refreshProcess(type)
-      if (res.code === 0 && res.value <= 100) {
-        progressValue.value = res.value
+      if (res.code === 0 && Number.isFinite(res.value)) {
+        // Avoid floating-point rounding causing the percentage to exceed the
+        // range accepted by the progress component.
+        progressValue.value = Math.min(100, Math.max(0, Math.round(res.value)))
         progressText.value = res.text
       }
     } catch {}
@@ -498,7 +500,7 @@ async function searchTmdb() {
   if (!tmdbSearchKeyword.value) return
   tmdbSearchLoading.value = true
   try {
-    const res = await doAction<{ code: number; result?: TmdbSearchItem[] }>('search_media_infos', {
+    const res = await doAction<{ msg:string; code: number; result?: TmdbSearchItem[] }>('search_media_infos', {
       keyword: tmdbSearchKeyword.value,
       searchtype: 'tmdb'
     })
