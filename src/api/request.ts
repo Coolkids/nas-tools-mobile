@@ -1,5 +1,9 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig } from 'axios'
-import NProgress from 'nprogress'
+import {
+  finishRequest,
+  startRequest,
+  updateRequestProgress
+} from '@/utils/requestProgress'
 
 const FLASK_BASE = import.meta.env.VITE_FLASK_BASE || ''
 
@@ -9,18 +13,34 @@ const instance: AxiosInstance = axios.create({
   withCredentials: true
 })
 
+const requestProgressIds = new WeakMap<object, number>()
+
 instance.interceptors.request.use((config) => {
-  NProgress.start()
+  const progressId = startRequest()
+  requestProgressIds.set(config, progressId)
+
+  const onUploadProgress = config.onUploadProgress
+  config.onUploadProgress = (event) => {
+    updateRequestProgress(progressId, 'upload', event)
+    onUploadProgress?.(event)
+  }
+
+  const onDownloadProgress = config.onDownloadProgress
+  config.onDownloadProgress = (event) => {
+    updateRequestProgress(progressId, 'download', event)
+    onDownloadProgress?.(event)
+  }
+
   return config
 })
 
 instance.interceptors.response.use(
   (response) => {
-    NProgress.done()
+    finishRequest(requestProgressIds.get(response.config) ?? -1)
     return response
   },
   (error) => {
-    NProgress.done()
+    finishRequest(requestProgressIds.get(error?.config) ?? -1)
     return Promise.reject(error)
   }
 )

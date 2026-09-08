@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { onMounted } from 'vue'
 import { NavBar, Tabbar, TabbarItem, Icon } from 'vant'
+import NetworkProgress from '@/components/NetworkProgress.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -39,6 +40,8 @@ const showBack = computed(() => !showTabBar.value && route.path !== '/index' && 
 
 <template>
   <div class="app-shell">
+    <NetworkProgress />
+
     <NavBar
       v-if="!isPublic"
       :title="(route.meta?.title as string) || 'NAStool'"
